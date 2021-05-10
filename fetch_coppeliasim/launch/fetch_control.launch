@@ -12,6 +12,8 @@
 
     <!-- run the controller -->
     <node name="arm_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn arm_controller torso_controller gripper_controller" respawn="false" output="screen"/>
+    <!-- load the controller -->
+    <node name="arm_controller_loader" pkg="controller_manager" type="controller_manager" args="load arm_with_torso_controller" respawn="false" output="screen"/>
 
     <!-- Nodelet manager for this pipeline -->
     <node pkg="nodelet" type="nodelet" args="manager" name="standalone_nodelet" output="screen"/>
