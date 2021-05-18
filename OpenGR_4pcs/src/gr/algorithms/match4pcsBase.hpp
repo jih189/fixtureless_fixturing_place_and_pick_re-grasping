@@ -261,8 +261,8 @@ namespace gr {
         fun_.ExtractPairs(distance2, normal_angle2, MatchBaseType::distance_factor * MatchBaseType::options_.delta, 2, 3, pairs2);
 
 
-       std::cout << "Pair set 1 has " << pairs1.size() << " elements" << std::endl;
-       std::cout << "Pair set 2 has " << pairs2.size() << " elements" << std::endl;
+    //    std::cout << "Pair set 1 has " << pairs1.size() << " elements" << std::endl;
+    //    std::cout << "Pair set 2 has " << pairs2.size() << " elements" << std::endl;
 
 //  Log<LogLevel::Verbose>( "Pair creation ouput: ", pairs1.size(), " - ", pairs2.size());
 

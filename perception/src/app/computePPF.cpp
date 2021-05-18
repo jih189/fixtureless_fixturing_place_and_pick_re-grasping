@@ -39,19 +39,21 @@ void computePPF(pcl::PointXYZRGBNormal pt1, pcl::PointXYZRGBNormal pt2, std::vec
 
 int main(int argc, char **argv)
 {
-  if (argc<4)
-  {
-    std::cout<<"Arguments:\narg1: config_dir, arg2: out_dir"<<std::endl;
-    return 1;
-  }
+  // if (argc<4)
+  // {
+  //   std::cout<<"Arguments:\narg1: config_dir, arg2: out_dir"<<std::endl;
+  //   return 1;
+  // }
   ros::init(argc,argv,"computePPF");
-  const std::string config_dir = std::string(argv[1]);
+  // const std::string config_dir = std::string(argv[1]);
+  // const std::string out_dir = std::string(argv[2]);
+  const std::string object_model_path = std::string(argv[1]);
   const std::string out_dir = std::string(argv[2]);
 
-  ConfigParser cfg(config_dir);
+  // ConfigParser cfg(config_dir);
 
   PointCloudRGBNormal::Ptr cloud(new PointCloudRGBNormal);
-  pcl::io::loadPLYFile(cfg.object_model_path, *cloud);
+  pcl::io::loadPLYFile(object_model_path, *cloud);
 
   float downsample_size = 0.001;
   float normal_radius = 0.003;

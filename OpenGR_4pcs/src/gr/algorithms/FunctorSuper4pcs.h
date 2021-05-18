@@ -288,7 +288,7 @@ namespace gr {
                 quadrilaterals->push_back( {First_pairs[id].first, First_pairs[id].second,
                                              Second_pairs[i].first,  Second_pairs[i].second });
             }
-            std::cout<< "Congruent quadrilaterals on Q size = "<<quadrilaterals->size()<<"\n";
+            // std::cout<< "Congruent quadrilaterals on Q size = "<<quadrilaterals->size()<<"\n";
             return quadrilaterals->size() != 0;
         }
 

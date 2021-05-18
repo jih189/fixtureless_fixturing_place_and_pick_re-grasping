@@ -104,8 +104,8 @@ pcl::Super4PCS<PointSource, PointTarget>::computeTransformation (PointCloudSourc
   fillPointSet(*target_, set1);   // we extract base on P (scene)
   fillPointSet(*input_, set2);
 
-  std::cout<<"super4pcs P size: "<<set1.size()<<std::endl;
-  std::cout<<"super4pcs Q size: "<<set2.size()<<std::endl;
+//   std::cout<<"super4pcs P size: "<<set1.size()<<std::endl;
+//   std::cout<<"super4pcs Q size: "<<set2.size()<<std::endl;
 
     //transformation set2(Q) to set1(P)
   float fitness_score_ = matcher.ComputeTransformation(set1, set2, final_transformation_, sampler, visitor);

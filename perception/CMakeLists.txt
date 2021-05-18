@@ -8,12 +8,15 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   shape_msgs
   geometry_msgs
+  image_transport
   sensor_msgs
   std_msgs
   message_generation
   cv_bridge
   pcl_ros
   bowen_depth_sim
+  tf
+  tf_conversions
 )
 find_package(Boost REQUIRED COMPONENTS system program_options)
 find_package(PCL 1.9 REQUIRED  COMPONENTS io common visualization features registration)
@@ -21,6 +24,8 @@ find_package(OpenCV REQUIRED)
 find_package(OpenMP REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(BLAS REQUIRED )
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 
 ## Generate added messages and services with any dependencies listed here
 generate_messages(
@@ -55,6 +60,8 @@ catkin_package(
   CATKIN_DEPENDS
     std_msgs
     geometry_msgs
+    tf
+    tf_conversions
 
   LIBRARIES
   ${PROJECT_NAME}
@@ -63,8 +70,10 @@ install(TARGETS ${PROJECT_NAME}
 LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION})
 add_executable(computePPF  src/app/computePPF.cpp)
 target_link_libraries(computePPF ${PROJECT_NAME})
-add_executable(main_realdata_auto  src/app/main_realdata_auto.cpp)
-target_link_libraries(main_realdata_auto ${PROJECT_NAME})
-add_executable(run_real_all  src/app/run_real_all.cpp)
-target_link_libraries(run_real_all ${PROJECT_NAME})
+# add_executable(main_realdata_auto  src/app/main_realdata_auto.cpp)
+# target_link_libraries(main_realdata_auto ${PROJECT_NAME})
+# add_executable(run_real_all  src/app/run_real_all.cpp)
+# target_link_libraries(run_real_all ${PROJECT_NAME})
+add_executable(tracking  src/app/tracking.cpp)
+target_link_libraries(tracking ${PROJECT_NAME})
 

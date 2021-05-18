@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+
+  <node name="testing_node" pkg="icra20_manipulation_pose" type="tracking" args="$(find icra20_manipulation_pose)/config_autodataset.yaml" output="screen" />
+
+</launch>

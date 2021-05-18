@@ -410,8 +410,8 @@ void MATCH_BASE_TYPE::init(const std::vector<Point3D>& P,
         sampled_Q_3D_ = Q;
     }
 
-    std::cout<<"sampled_P_3D_ size: "<<sampled_P_3D_.size()<<std::endl;
-    std::cout<<"sampled_Q_3D_ size: "<<sampled_Q_3D_.size()<<std::endl;
+    // std::cout<<"sampled_P_3D_ size: "<<sampled_P_3D_.size()<<std::endl;
+    // std::cout<<"sampled_Q_3D_ size: "<<sampled_Q_3D_.size()<<std::endl;
 
     _point_probs.clear();
     _point_probs.resize(sampled_P_3D_.size());

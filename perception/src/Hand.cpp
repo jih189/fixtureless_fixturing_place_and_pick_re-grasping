@@ -7,103 +7,101 @@
 using namespace Eigen;
 
 
-double objFuncPSO(const arma::vec& X, arma::vec* grad_out, optim::ArgPasser* args)
+double objFuncPSO(const arma::vec& X, arma::vec* grad_out, optim::ArgPasser* args)//, PointCloudRGBNormal::Ptr testcloud1, PointCloudRGBNormal::Ptr testcloud2,boost::shared_ptr<visualization_msgs::MarkerArray> line_markers)
 {
+  // line_markers->markers.clear();
   const std::string name = args->name;
   const float dist_thres = args->dist_thres;
   float score = 0;
+  // get current the model tf
   Eigen::Matrix4f tf_self;
   {
-    Eigen::Matrix3f R;  // Finger rotate around x
-    R = AngleAxisf(0, Vector3f::UnitZ()) * AngleAxisf(0, Vector3f::UnitY()) * AngleAxisf(X[0], Vector3f::UnitX());
     tf_self.setIdentity();
-    tf_self.block(0,0,3,3) = R;
+    tf_self(1,3) = X[0];
   }
+
   Eigen::Matrix4f cur_model2handbase = args->model2handbase * tf_self;
 
   //We penalize when a pair of gripper too close to hold anything, NOTE: y is inner side. We consider both sides of the finger, tip1:tip side, tip2:palm side
-  Eigen::Vector4f tip1, tip2;
-  if (name=="finger_1_1" || name=="finger_2_1")   //Palm side finger
-  {
-    tip1 << args->finger_out_property._min_x, args->finger_out_property._max_y, args->finger_out_property._min_z, 1;
-    Eigen::Matrix4f cur_finger_out2handbase = args->model2handbase * tf_self * args->finger_out2parent;
-    tip1 = cur_finger_out2handbase*tip1;
+  Eigen::Vector4f tip2;
 
-    tip2 << args->finger_property._min_x, args->finger_property._max_y, args->finger_property._min_z, 1;
-    tip2 = cur_model2handbase*tip2;
-  }
-  else
-  {
-    tip1 << args->finger_property._min_x, args->finger_property._max_y, args->finger_property._min_z, 1;
-    tip1 = cur_model2handbase*tip1;
+  tip2 << args->finger_property._min_x, args->finger_property._max_y, args->finger_property._min_z, 1;
 
-    tip2 << args->finger_property._min_x, args->finger_property._max_y, args->finger_property._max_z, 1;
-    tip2 = cur_model2handbase*tip2;
-  }
+  tip2 = cur_model2handbase*tip2; // get the current position of corner of finger
 
-  float gripper_dist1, gripper_dist2;
-  if (name=="finger_2_1" || name=="finger_2_2")   //Right side finger
+  float gripper_dist2;
+  if (name=="r_gripper_finger_link")   //Right side finger
   {
-    gripper_dist1 = tip1(1)-args->pair_tip1(1);
     gripper_dist2 = tip2(1)-args->pair_tip2(1);
   }
   else
   {
-    gripper_dist1 = -tip1(1)+args->pair_tip1(1);
     gripper_dist2 = -tip2(1)+args->pair_tip2(1);
   }
 
-
   float penalty_gripper_dist = 0;
-  const float GRIPPER_MIN_DIST = args->cfg.gripper_min_dist;
-  if (gripper_dist1<GRIPPER_MIN_DIST || gripper_dist2<GRIPPER_MIN_DIST)
+  const float GRIPPER_MIN_DIST = 0.001;
+  // if the finger is too close to another, then it will be penalized 
+  if (gripper_dist2<GRIPPER_MIN_DIST)
   {
-    penalty_gripper_dist = 1e3 + 1e3*std::abs(GRIPPER_MIN_DIST-gripper_dist1);  //NOTE: only use dist1 to make objective monotone
+    penalty_gripper_dist = 1e3 + 1e3*std::abs(GRIPPER_MIN_DIST-gripper_dist2);
     score -= penalty_gripper_dist;
     return -score;   //NOTE: we are minimizing the cost function
   }
-
+ 
 
   float num_match = 0;
   const float PLANAR_DIST_THRES = args->cfg.yml["hand_match"]["planar_dist_thres"].as<float>();
   PointCloudRGBNormal::Ptr model = args->model;
   //NOTE: we compare in handbase frame, so that kdtree only build once
   PointCloudRGBNormal::Ptr model_in_handbase(new PointCloudRGBNormal);
+
   pcl::transformPointCloudWithNormals(*model, *model_in_handbase, cur_model2handbase);
-  float NORMAL_ANGLE_THRES = -1;
-  if (name=="finger_1_1" || name=="finger_2_1")
-  {
-    NORMAL_ANGLE_THRES = std::cos(args->cfg.yml["hand_match"]["finger1_normal_angle"].as<float>()/180.0*M_PI);
-  }
-  else
-  {
-    NORMAL_ANGLE_THRES = std::cos(args->cfg.yml["hand_match"]["finger2_normal_angle"].as<float>()/180.0*M_PI);
-  }
+  // if (name == "r_gripper_finger_link"){
+  //   pcl::copyPointCloud(*model_in_handbase,*testcloud1);
+  //   pcl::copyPointCloud(*args->scene_hand_region_removed_noise,*testcloud2);
+  // }else if(name == "l_gripper_finger_link"){
+  //   pcl::copyPointCloud(*model_in_handbase,*testcloud1);
+  //   pcl::copyPointCloud(*args->scene_hand_region_removed_noise,*testcloud2);
+  // }
+  float NORMAL_ANGLE_THRES = std::cos(args->cfg.yml["hand_match"]["finger_normal_angle"].as<float>()/180.0*M_PI);
+  
   // Eigen::MatrixXf V(model_in_handbase->points.size(),3);
   const bool check_normal = args->cfg.yml["hand_match"]["check_normal"].as<bool>();
-  for (int ii=0;ii<model_in_handbase->points.size();ii++)
+
+  for (int ii=0;ii<model_in_handbase->points.size();ii++) // model_in_handbase is the model of current finger
   {
     std::vector<int> pointIdxNKNSearch(1);
     std::vector<float> pointNKNSquaredDistance(1);
     auto pt = model_in_handbase->points[ii];
     if (args->kdtree_scene->nearestKSearch (pt, 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0)
     {
-      auto nei = args->scene_hand_region->points[pointIdxNKNSearch[0]];
+      auto nei = args->scene_hand_region_removed_noise->points[pointIdxNKNSearch[0]];
       float sq_planar_dist = (pt.x-nei.x)*(pt.x-nei.x) + (pt.y-nei.y)*(pt.y-nei.y);  //In handbase's frame
+
+      // not match with the point cloud on another finger
+      if (name=="r_gripper_finger_link" && nei.y < 0.0)   //Right side finger
+      {
+        continue;
+      }
+      else if(name=="l_gripper_finger_link" && nei.y > 0.0)
+      {
+        continue;
+      }
 
       if (pointNKNSquaredDistance[0]<=dist_thres*dist_thres /*|| (sq_planar_dist<=PLANAR_DIST_THRES*PLANAR_DIST_THRES && std::abs(pt.z-nei.z)<=0.03)*/)  // Squared dist!!
       {
-        if (!check_normal)
-        {
-          // num_match+=std::exp(-sq_planar_dist/(PLANAR_DIST_THRES*PLANAR_DIST_THRES));
-          num_match += 1 + X[0];
-          continue;
-        }
-        if (nei.normal_x==0 && nei.normal_y==0 && nei.normal_z==0)
-        {
-          num_match += 1 + X[0];
-          continue;
-        }
+        // if (!check_normal)
+        // {
+        //   // num_match+=std::exp(-sq_planar_dist/(PLANAR_DIST_THRES*PLANAR_DIST_THRES));
+        //   num_match += 1 + std::abs(X[0]);
+        //   continue;
+        // }
+        // if (nei.normal_x==0 && nei.normal_y==0 && nei.normal_z==0)
+        // {
+        //   num_match += 1 + std::abs(X[0]);
+        //   continue;
+        // }
         if (std::isfinite(nei.normal_x) && std::isfinite(nei.normal_y) && std::isfinite(nei.normal_z))
         {
           // V.block(num_match,0,1,3) << nei.x, nei.y, nei.z;
@@ -111,19 +109,42 @@ double objFuncPSO(const arma::vec& X, arma::vec* grad_out, optim::ArgPasser* arg
           Eigen::Vector3f n2(nei.normal_x, nei.normal_y, nei.normal_z);
           if (n1.dot(n2)>=NORMAL_ANGLE_THRES)
           {
-            // num_match+=n1.dot(n2)*std::exp(-sq_planar_dist/(PLANAR_DIST_THRES*PLANAR_DIST_THRES));
-            // num_match += (1-std::sqrt(sq_planar_dist)/dist_thres) + X[0];
-            // num_match+=n1.dot(n2);
-            num_match += 1 + X[0];
+
+            // num_match += n1.dot(n2)*std::exp(-sq_planar_dist/(PLANAR_DIST_THRES*PLANAR_DIST_THRES));
+            num_match += (1-std::sqrt(sq_planar_dist)/dist_thres) + std::abs(X[0]);
+            // num_match += n1.dot(n2);
+            // num_match += 1 + std::abs(X[0]);
+
+            // add the matching line to the markers
+            // visualization_msgs::Marker line;
+            // line.header.stamp = ros::Time();
+            // line.header.frame_id = "/gripper_link";
+            // line.ns = "lines";
+            // line.action = visualization_msgs::Marker::ADD;
+            // line.pose.orientation.w = 1.0;
+            // line.type = visualization_msgs::Marker::LINE_LIST;
+            // line.scale.x = 0.0001;
+            // line.color.r = 1.0;
+            // line.color.a = 1.0;
+            // line.id = ii;
+            // geometry_msgs::Point p;
+            // p.x = pt.x;
+            // p.y = pt.y;
+            // p.z = pt.z;
+            // line.points.push_back(p);
+            // p.x = nei.x;
+            // p.y = nei.y;
+            // p.z = nei.z;
+            // line.points.push_back(p);
+            // line_markers->markers.push_back(line);
           }
           continue;
         }
-
       }
     }
   }
-  score += num_match;
 
+  score += num_match;
 
   //We penalize points on outer side of finger, this only makes sense when it's somewhat matching. Otherwise scene in finger is not aligned with finger property along z axis
   float outer_dist_sum=0;
@@ -131,23 +152,33 @@ double objFuncPSO(const arma::vec& X, arma::vec* grad_out, optim::ArgPasser* arg
   FingerProperty finger_property = args->finger_property;
   PointCloudRGBNormal::Ptr scene_no_swivel_in_finger(new PointCloudRGBNormal);
   pcl::transformPointCloudWithNormals(*args->scene_remove_swivel, *scene_no_swivel_in_finger, cur_model2handbase.inverse());
-
+  
   if (num_match==0)    // encourage moving
   {
-    score = -100 + X[0];
+    score = -100 + std::abs(X[0]);
     return -score;
   }
 
   for (const auto &pt:scene_no_swivel_in_finger->points)
   {
-    int cur_bin = finger_property.getBinAlongZ(pt.z);
-    if (pt.y>=finger_property._hist_alongz(1,cur_bin))  //Same axis for all fingers
+    int cur_bin = finger_property.getBinAlongX(pt.x);
+
+    if (name=="r_gripper_finger_link")   //Right side finger
     {
-      continue;
+      if (pt.y<=finger_property._hist_alongx(4,cur_bin)){ // point should be less than max of finger in y
+        continue;
+      }
     }
+    else
+    {
+      if(pt.y>=finger_property._hist_alongx(1,cur_bin)){ // point should be greater than min finger in y
+        continue;
+      }
+    }
+
     // if (pt.y>=-0.01) continue;
     // outer_dist_sum += std::abs(pt.y+0.01);
-    outer_dist_sum += std::abs(pt.y-finger_property._hist_alongz(1,cur_bin));
+    outer_dist_sum += std::abs(pt.y-finger_property._hist_alongx(1,cur_bin));
     num_outer++;
   }
   float penalty_outer=0;
@@ -173,14 +204,16 @@ double objFuncPSO(const arma::vec& X, arma::vec* grad_out, optim::ArgPasser* arg
   }
 
   return -score;   //NOTE: we are minimizing the cost function
-
-
 }
 
 FingerProperty::FingerProperty(){};
 
 FingerProperty::FingerProperty(PointCloudRGBNormal::Ptr model, int num_division):_num_division(num_division)
 {
+  if (model->size() == 0){
+    ROS_ERROR("number of points in finger pointcloud should not be zero!!!");
+    throw;
+  }
   pcl::PointXYZRGBNormal min_pt, max_pt;
   pcl::getMinMax3D(*model, min_pt, max_pt);
   _min_x = min_pt.x;
@@ -189,23 +222,24 @@ FingerProperty::FingerProperty(PointCloudRGBNormal::Ptr model, int num_division)
   _max_x = max_pt.x;
   _max_y = max_pt.y;
   _max_z = max_pt.z;
-  _stride_z = (_max_z-_min_z)/num_division;
-  _hist_alongz.resize(6,num_division);
-  _hist_alongz.block(0,0,3,num_division).setConstant(std::numeric_limits<float>::max());
-  _hist_alongz.block(3,0,3,num_division).setConstant(-std::numeric_limits<float>::max());
+  _stride_x = (_max_x-_min_x)/num_division;
+  _hist_alongx.resize(6,num_division);
+  _hist_alongx.block(0,0,3,num_division).setConstant(std::numeric_limits<float>::max());
+  _hist_alongx.block(3,0,3,num_division).setConstant(-std::numeric_limits<float>::max());
   std::vector<bool> changed(num_division, false);
   for (int i=0;i<model->points.size();i++)
   {
     auto pt = model->points[i];
-    int bin = getBinAlongZ(pt.z);
-    _hist_alongz(0,bin) = std::min(_hist_alongz(0,bin), pt.x);
-    _hist_alongz(1,bin) = std::min(_hist_alongz(1,bin), pt.y);
-    _hist_alongz(2,bin) = std::min(_hist_alongz(2,bin), pt.z);
-    _hist_alongz(3,bin) = std::max(_hist_alongz(3,bin), pt.x);
-    _hist_alongz(4,bin) = std::max(_hist_alongz(4,bin), pt.y);
-    _hist_alongz(5,bin) = std::max(_hist_alongz(5,bin), pt.z);
+    int bin = getBinAlongX(pt.x);
+    _hist_alongx(0,bin) = std::min(_hist_alongx(0,bin), pt.x);
+    _hist_alongx(1,bin) = std::min(_hist_alongx(1,bin), pt.y);
+    _hist_alongx(2,bin) = std::min(_hist_alongx(2,bin), pt.z);
+    _hist_alongx(3,bin) = std::max(_hist_alongx(3,bin), pt.x);
+    _hist_alongx(4,bin) = std::max(_hist_alongx(4,bin), pt.y);
+    _hist_alongx(5,bin) = std::max(_hist_alongx(5,bin), pt.z);
     changed[bin]=true;
   }
+  // it split the finger block into several sub blocks
 
   //When cur bin never touched, take nearest valid neighbor
   for (int i=0;i<num_division;i++)
@@ -215,7 +249,7 @@ FingerProperty::FingerProperty(PointCloudRGBNormal::Ptr model, int num_division)
     {
       if (changed[j])
       {
-        _hist_alongz.col(i) = _hist_alongz.col(j);
+        _hist_alongx.col(i) = _hist_alongx.col(j);
         changed[i] = true;
         break;
       }
@@ -227,7 +261,7 @@ FingerProperty::FingerProperty(PointCloudRGBNormal::Ptr model, int num_division)
     {
       if (changed[i])
       {
-        _hist_alongz.col(num_division-1) = _hist_alongz.col(i);
+        _hist_alongx.col(num_division-1) = _hist_alongx.col(i);
         changed[num_division-1] = true;
         break;
       }
@@ -241,9 +275,9 @@ FingerProperty::~FingerProperty()
 }
 
 
-int FingerProperty::getBinAlongZ(float z)
+int FingerProperty::getBinAlongX(float x)
 {
-  int bin = std::max(z-_min_z, 0.0f)/_stride_z;
+  int bin = std::max(x-_min_x, 0.0f)/_stride_x;
   bin = std::max(bin,0);
   bin = std::min(bin, _num_division-1);
   return bin;
@@ -259,6 +293,9 @@ Hand::Hand(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K)
 {
   cfg=cfg1;
   _hand_cloud = boost::make_shared<PointCloudRGBNormal>();
+  test1 = boost::make_shared<PointCloudRGBNormal>();
+  test2 = boost::make_shared<PointCloudRGBNormal>();
+  markerarray = boost::make_shared<visualization_msgs::MarkerArray>();
   _cam_K = cam_K;
 
   parseURDF();
@@ -278,17 +315,22 @@ Hand::~Hand()
 
 void Hand::setCurScene(const cv::Mat &depth_meters, PointCloudRGBNormal::Ptr scene_organized, PointCloudRGBNormal::Ptr scene_hand_region, const Eigen::Matrix4f &handbase_in_cam)
 {
+  // current input pointcloud are in camera base
   _depth_meters=depth_meters;
   _scene_sampled=boost::make_shared<PointCloudRGBNormal>();
   _scene_hand_region=boost::make_shared<PointCloudRGBNormal>();
   Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_organized, _scene_sampled, 0.001);
-  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_hand_region, _scene_hand_region,0.003);
+  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_hand_region, _scene_hand_region,0.001);
+
   _handbase_in_cam = handbase_in_cam;
-  handbaseICP(scene_organized);
+  handbaseICP(scene_organized); // this function will update the _handbase_in_cam, so be careful!!
 
   //NOTE: we compare in handbase frame, so that kdtree only build once
   PointCloudRGBNormal::Ptr scene_in_handbase(new PointCloudRGBNormal);
+  // use the updated handbase in camera to filter the pointcloud
   pcl::transformPointCloudWithNormals(*_scene_hand_region, *scene_in_handbase, _handbase_in_cam.inverse());
+
+  // radiusoutlierremoval filter points in a cloud based on the number of neighbors they have.
   PointCloudRGBNormal::Ptr scene_hand_region_removed_noise(new PointCloudRGBNormal);
   {
     pcl::RadiusOutlierRemoval<pcl::PointXYZRGBNormal> outrem;
@@ -304,6 +346,7 @@ void Hand::setCurScene(const cv::Mat &depth_meters, PointCloudRGBNormal::Ptr sce
     outrem.setMinNeighborsInRadius (100);
     outrem.filter (*scene_hand_region_removed_noise);
   }
+  // staticaloutlierremoval uses point neighborhood statics to filter outlier data.
   {
     pcl::StatisticalOutlierRemoval<pcl::PointXYZRGBNormal> sor;
     sor.setInputCloud (scene_hand_region_removed_noise);
@@ -311,26 +354,33 @@ void Hand::setCurScene(const cv::Mat &depth_meters, PointCloudRGBNormal::Ptr sce
     sor.setStddevMulThresh (2);
     sor.filter (*scene_hand_region_removed_noise);   //! in hand base
   }
+  // keep only fingers part
   PointCloudRGBNormal::Ptr scene_remove_swivel(new PointCloudRGBNormal);
   {
     pcl::PassThrough<pcl::PointXYZRGBNormal> pass;
     pass.setInputCloud (scene_hand_region_removed_noise);
     pass.setFilterFieldName ("x");
-    pass.setFilterLimits (-0.25, -0.1);
+    pass.setFilterLimits (-0.0295, 0.05);
     pass.filter (*scene_remove_swivel);   // In handbase frame
   }
-  assert(scene_remove_swivel->points.size()>0);
-  PointCloudRGBNormal::Ptr scene_noswivel_cam(new PointCloudRGBNormal);
-  pcl::transformPointCloudWithNormals(*scene_remove_swivel, *scene_noswivel_cam, _handbase_in_cam);
-  PointCloudRGBNormal::Ptr handregion_in_cam(new PointCloudRGBNormal);
-  pcl::transformPointCloudWithNormals(*scene_hand_region_removed_noise, *handregion_in_cam, _handbase_in_cam);
-  _pso_args.scene_hand_region_removed_noise = scene_hand_region_removed_noise;
-  _pso_args.scene_hand_region = scene_in_handbase;
-  boost::shared_ptr<pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> > kdtree(new pcl::KdTreeFLANN<pcl::PointXYZRGBNormal>);
-  kdtree->setInputCloud(scene_hand_region_removed_noise);
-  _pso_args.kdtree_scene = kdtree;
-  _pso_args.scene_remove_swivel = scene_remove_swivel;
 
+
+  assert(scene_remove_swivel->points.size()>0);
+
+  // todo: why no use scene_noswivel_cam
+  // PointCloudRGBNormal::Ptr scene_noswivel_cam(new PointCloudRGBNormal);
+  // pcl::transformPointCloudWithNormals(*scene_remove_swivel, *scene_noswivel_cam, _handbase_in_cam); // scene_noswivel_cam is only finger parts in camera base
+  
+  // PointCloudRGBNormal::Ptr handregion_in_cam(new PointCloudRGBNormal);
+  // pcl::transformPointCloudWithNormals(*scene_hand_region_removed_noise, *handregion_in_cam, _handbase_in_cam); // hardregion_in_cam is whole hand point cloud in camera base
+  _pso_args.scene_hand_region_removed_noise = scene_hand_region_removed_noise;// scene_hand_region_removed_noise in hand base
+  _pso_args.scene_hand_region = scene_in_handbase; // scene_in_handbase is in hand base
+  boost::shared_ptr<pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> > kdtree(new pcl::KdTreeFLANN<pcl::PointXYZRGBNormal>);
+
+  kdtree->setInputCloud(scene_hand_region_removed_noise);
+
+  _pso_args.kdtree_scene = kdtree;
+  _pso_args.scene_remove_swivel = scene_remove_swivel; // scene_remove_swivel is in hand base
 }
 
 void Hand::reset()
@@ -347,6 +397,9 @@ void Hand::reset()
   }
   _handbase_in_cam.setIdentity();
   _hand_cloud->clear();
+  test1->clear();
+  test2->clear();
+  markerarray->markers.clear();
   _depth_meters.release();
   _scene_sampled->clear();
   _scene_hand_region->clear();
@@ -449,6 +502,7 @@ void Hand::parseURDF()
       Utils::delimitString(scale_str, ' ', scale);
     }
 
+    std::cout << "load component " << name << std::endl;
 
     PointCloudRGBNormal::Ptr cloud(new PointCloudRGBNormal);
     pcl::io::loadPLYFile(cfg->yml["Hand"][name]["cloud"].as<std::string>(), *cloud);
@@ -460,9 +514,9 @@ void Hand::parseURDF()
       pt.z *= scale[2];
     }
 
-
-
+    
     pcl::PolygonMesh::Ptr mesh(new pcl::PolygonMesh);
+
     pcl::io::loadOBJFile(cfg->yml["Hand"][name]["mesh"].as<std::string>(), *mesh);
     PointCloud::Ptr mesh_cloud(new PointCloud);
     pcl::fromPCLPointCloud2(mesh->cloud, *mesh_cloud);
@@ -473,7 +527,10 @@ void Hand::parseURDF()
       pt.y *= scale[1];
       pt.z *= scale[2];
     }
+  
     pcl::toPCLPointCloud2(*mesh_cloud, mesh->cloud);
+
+
 
     // Component init pose must be applied at beginning according to URDF !!
     pcl::PolygonMesh::Ptr convex_mesh(new pcl::PolygonMesh);
@@ -502,18 +559,19 @@ void Hand::parseURDF()
 }
 
 //Component tf in handbase, accounting for self rotation
+// todo: this function is updating the tf from end to root, which makes no sense. I may need to update it.
 void Hand::getTFHandBase(std::string cur_name, Eigen::Matrix4f &tf_in_handbase)
 {
   tf_in_handbase.setIdentity();
   while (1)   //Get pose in world
   {
-    if (cur_name=="base_link")
+    if (cur_name=="gripper_link")
     {
       break;
     }
     if (_tf_self.find(cur_name)==_tf_self.end())
     {
-      std::cout<<"cur_name does not exist!!!\n";
+      std::cout<< cur_name << " does not exist in tf!!!\n";
       exit(1);
     }
     Matrix4f cur_tf = _tf_in_parent[cur_name];
@@ -524,7 +582,7 @@ void Hand::getTFHandBase(std::string cur_name, Eigen::Matrix4f &tf_in_handbase)
 
 void Hand::addComponent(std::string name, std::string parent_name, PointCloudRGBNormal::Ptr cloud, pcl::PolygonMesh::Ptr mesh, pcl::PolygonMesh::Ptr convex_mesh, const Matrix4f &tf_in_parent, const Matrix4f &tf_self)
 {
-  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(cloud, cloud, 0.005);
+  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(cloud, cloud, 0.002);
   _clouds[name] = cloud;
   _meshes[name] = mesh;
   _convex_meshes[name] = convex_mesh;
@@ -534,6 +592,7 @@ void Hand::addComponent(std::string name, std::string parent_name, PointCloudRGB
 }
 
 //Return cloud in handbase frame
+// this function will build _kdtrees for each componment in hand baseframe
 void Hand::makeHandCloud()
 {
   _hand_cloud->clear();
@@ -547,8 +606,16 @@ void Hand::makeHandCloud()
     PointCloudRGBNormal::Ptr tmp(new PointCloudRGBNormal);
     pcl::transformPointCloudWithNormals(*component_cloud, *tmp, model2handbase);
 
+    // test
+    // if (name == "r_gripper_finger_link"){
+    //   pcl::copyPointCloud(*tmp,*test1);
+    // }else if(name == "l_gripper_finger_link"){
+    //   pcl::copyPointCloud(*tmp,*test2);
+    // }
+
     (*_hand_cloud) += (*tmp);
 
+    // build the kd tree of part of model
     boost::shared_ptr<pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> > kdtree(new pcl::KdTreeFLANN<pcl::PointXYZRGBNormal>);
     kdtree->setInputCloud(tmp);
     _kdtrees[name] = kdtree;
@@ -603,69 +670,63 @@ void Hand::initPSO()
 bool Hand::matchOneComponentPSO(std::string model_name, float min_angle, float max_angle, bool use_normal, float dist_thres, float normal_angle_thres, float least_match)
 {
   _pso_args.dist_thres = dist_thres;
-  _pso_settings.upper_bounds = arma::zeros(1) + max_angle*M_PI/180;
-  _pso_settings.lower_bounds = arma::zeros(1) + min_angle*M_PI/180;
-  _pso_settings.pso_initial_ub = arma::zeros(1) + max_angle*M_PI/180;
-  _pso_settings.pso_initial_lb = arma::zeros(1) + min_angle*M_PI/180;
+
+  _pso_settings.upper_bounds = arma::zeros(1) + max_angle;
+  _pso_settings.lower_bounds = arma::zeros(1) + min_angle;
+  _pso_settings.pso_initial_ub = arma::zeros(1) + max_angle;
+  _pso_settings.pso_initial_lb = arma::zeros(1) + min_angle;
+  
+
+  // if(model_name == "r_gripper_finger_link"){//test
+  //   pcl::copyPointCloud(*_clouds[model_name],*test1);
+  // }
+  // else{
+  //   pcl::copyPointCloud(*_clouds[model_name],*test2);
+  // }
 
   std::map<std::string, std::string> pair_names;
-  pair_names["finger_1_1"] = "finger_2_1";
-  pair_names["finger_2_1"] = "finger_1_1";
-  pair_names["finger_1_2"] = "finger_2_2";
-  pair_names["finger_2_2"] = "finger_1_2";
+  pair_names["r_gripper_finger_link"] = "l_gripper_finger_link";
+  pair_names["l_gripper_finger_link"] = "r_gripper_finger_link";
   Eigen::Matrix4f pair_in_base;
   const std::string pair_name = pair_names[model_name];
-  if (pair_name=="finger_1_1" || pair_name=="finger_2_1")  // This case, We consider the whole staight finger1+2
-  {
-    const std::string pair_finger_out_name = pair_name=="finger_1_1"? "finger_1_2" : "finger_2_2";
-    Eigen::Vector4f pair_tip_pt1(_finger_properties[pair_finger_out_name]._min_x, _finger_properties[pair_finger_out_name]._max_y, _finger_properties[pair_finger_out_name]._min_z, 1);
-    getTFHandBase(pair_finger_out_name, pair_in_base);
-    pair_tip_pt1 = pair_in_base * pair_tip_pt1;
-    _pso_args.pair_tip1 = pair_tip_pt1;
 
-    getTFHandBase(pair_name, pair_in_base);
-    Eigen::Vector4f pair_tip_pt2(_finger_properties[pair_name]._min_x, _finger_properties[pair_name]._max_y, _finger_properties[pair_name]._min_z, 1);
-    pair_tip_pt2 = pair_in_base * pair_tip_pt2;
-    _pso_args.pair_tip2 = pair_tip_pt2;
-    const std::string finger_out_name = model_name=="finger_1_1"? "finger_1_2" : "finger_2_2";
-    _pso_args.finger_out2parent = _tf_in_parent[finger_out_name];
-    _pso_args.finger_out_property = _finger_properties[finger_out_name];
-  }
-  else
-  {
-    Eigen::Vector4f pair_tip_pt1(_finger_properties[pair_name]._min_x, _finger_properties[pair_name]._max_y, _finger_properties[pair_name]._min_z, 1);
-    getTFHandBase(pair_name, pair_in_base);
-    pair_tip_pt1 = pair_in_base * pair_tip_pt1;
-    _pso_args.pair_tip1 = pair_tip_pt1;
-    Eigen::Vector4f pair_tip_pt2(_finger_properties[pair_name]._min_x, _finger_properties[pair_name]._max_y, _finger_properties[pair_name]._max_z, 1);
-    pair_tip_pt2 = pair_in_base * pair_tip_pt2;
-    _pso_args.pair_tip2 = pair_tip_pt2;
-  }
+  getTFHandBase(pair_name, pair_in_base);  // get the tf of pair finger
+  Eigen::Vector4f pair_tip_pt2(_finger_properties[pair_name]._min_x, _finger_properties[pair_name]._max_y, _finger_properties[pair_name]._max_z, 1);
+  pair_tip_pt2 = pair_in_base * pair_tip_pt2; // get the pair finger in higher corner in z axis 
+  _pso_args.pair_tip2 = pair_tip_pt2; // pass it to pso later as argument
+
 
   arma::vec X = arma::zeros(1);
   _pso_args.name = model_name;
-  _pso_args.model = _clouds[model_name];
+  _pso_args.model = _clouds[model_name]; // load the finger cloud
   Eigen::Matrix4f model2handbase;
-  getTFHandBase(model_name, model2handbase);
+  getTFHandBase(model_name, model2handbase); // load the tf of current finger
   _pso_args.model2handbase = model2handbase;
+
   Eigen::Matrix4f model_in_cam = _handbase_in_cam * model2handbase;
   _pso_args.model_in_cam = model_in_cam;
+
   _pso_args.finger_property = _finger_properties[model_name];
   // _pso_args.sdf.registerMesh(_meshes[model_name], model_name, Eigen::Matrix4f::Identity());
 
   bool success = optim::pso(X,objFuncPSO,&_pso_args,_pso_settings);
+  // std::cout << "score: " << objFuncPSO(X, NULL, &_pso_args) << std::endl;//, test1, test2, markerarray);
+
   if (!success || -_pso_args.objval<=least_match)
   {
-    std::cout<<model_name+" PSO matching failed"<<std::endl;
+    std::cout<<model_name+" PSO matching failed";
+    if(-_pso_args.objval<=least_match){
+      std::cout << " because of objval " << -_pso_args.objval << std::endl;
+    }else{
+      std::cout << std::endl;
+    }
     _tf_self[model_name].setIdentity();
     _component_status[model_name]=false;
     return false;
   }
   float angle = static_cast<float>(X[0]);
-  Eigen::Matrix3f R;
-  R = AngleAxisf(0, Vector3f::UnitZ()) * AngleAxisf(0, Vector3f::UnitY()) * AngleAxisf(angle, Vector3f::UnitX());
   _tf_self[model_name].setIdentity();
-  _tf_self[model_name].block(0,0,3,3) = R;
+  _tf_self[model_name](1,3) = angle;
   _component_status[model_name]=true;
   printf("%s PSO final angle=%f, match_score=%f\n", model_name.c_str(), angle, -_pso_args.objval);
   return true;
@@ -673,71 +734,43 @@ bool Hand::matchOneComponentPSO(std::string model_name, float min_angle, float m
 
 
 
-
+// handbase iterative closest point
 void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
 {
   PointCloudRGBNormal::Ptr scene_sampled(new PointCloudRGBNormal);
-  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_organized, scene_sampled, 0.005);
+  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_organized, scene_sampled, 0.001);
 
   PointCloudRGBNormal::Ptr handbase(new PointCloudRGBNormal);
-  pcl::copyPointCloud(*_clouds["base_link"],*handbase);
+  pcl::copyPointCloud(*_clouds["gripper_link"],*handbase); // need to filter out point is not showing in the view!!!
 
   PointCloudRGBNormal::Ptr scene_handbase(new PointCloudRGBNormal);
   Eigen::Matrix4f cam_in_handbase = _handbase_in_cam.inverse();  // cam -> handbase^ -> handbase(real) -> finger
   assert(cam_in_handbase!=Eigen::Matrix4f::Identity());
   pcl::transformPointCloudWithNormals(*scene_sampled, *scene_handbase, cam_in_handbase);
 
+  // filter out the point not related to the hand.
   pcl::PassThrough<pcl::PointXYZRGBNormal> pass;
   pass.setInputCloud (scene_handbase);
   pass.setFilterFieldName ("x");
-  pass.setFilterLimits (-0.07, 0.03);
+  pass.setFilterLimits (-0.15, -0.0295);
   pass.filter (*scene_handbase);
 
   pass.setInputCloud (scene_handbase);
   pass.setFilterFieldName ("z");
-  pass.setFilterLimits (-0.18, 0.01);
+  pass.setFilterLimits (-0.05, 0.05);
   pass.filter (*scene_handbase);
-
-
-  float z1=_tf_in_parent["finger_1_1"](2,3);
-  float y1=_tf_in_parent["finger_1_1"](1,3);
-  float z2=_tf_in_parent["finger_2_1"](2,3);
-  float y2=_tf_in_parent["finger_2_1"](1,3);
-
-
-  // Remove swivel part from handbase
-  PointCloudRGBNormal::Ptr scene_handbase_tmp(new PointCloudRGBNormal);
-  scene_handbase_tmp->points.reserve(scene_handbase->points.size());
-
-  for (const auto &pt:scene_handbase->points)   // Remove finger connection part
-  {
-    float sq_dist1 = (pt.z-z1)*(pt.z-z1) + (pt.y-y1)*(pt.y-y1);
-    if (sq_dist1<=0.015*0.015) continue;
-    float sq_dist2 = (pt.z-z2)*(pt.z-z2) + (pt.y-y2)*(pt.y-y2);
-    if (sq_dist2<=0.015*0.015) continue;
-    if ((pt.y>=y1 && pt.y<=y2) || (pt.y>=y2 && pt.y<=y1))
-    {
-      if (std::abs(pt.z-z1)<=0.01 || std::abs(pt.z-z1)<=0.01)
-      {
-        continue;
-      }
-    }
-
-    scene_handbase_tmp->points.push_back(pt);
-
-
-  }
-  scene_handbase_tmp->swap(*scene_handbase);
 
   //Now all in handbase
   Eigen::Matrix4f cam2handbase_offset(Eigen::Matrix4f::Identity());
-  float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, handbase, cam2handbase_offset, 50, 30, 0.03, 1e-4);
+
+  float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, handbase, cam2handbase_offset, 70, 20, 0.0005, 1e-4);
 
   pcl::transformPointCloudWithNormals(*scene_handbase,*scene_handbase,cam2handbase_offset);
 
-  std::cout<<"cam2handbase_offset:\n"<<cam2handbase_offset<<"\n\n";
+  // need to test in simulation to make cam2handbase_offset to be identity matrix
+  // std::cout<<"cam2handbase_offset:\n"<<cam2handbase_offset<<"\n\n";
   float translation = cam2handbase_offset.block(0,3,3,1).norm();
-  if (translation >=0.05)
+  if (translation >=0.0001) // set this higher in real world
   {
     printf("cam2handbase_offset set to Identity, icp=%f, translation=%f, x=%f, y=%f\n",score, translation, std::abs(cam2handbase_offset(0,3)), std::abs(cam2handbase_offset(1,3)));
     cam2handbase_offset.setIdentity();
@@ -745,14 +778,18 @@ void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
 
   float rot_diff = Utils::rotationGeodesicDistance(Eigen::Matrix3f::Identity(), cam2handbase_offset.block(0,0,3,3)) / M_PI *180.0;
   Eigen::Matrix3f R = cam2handbase_offset.block(0,0,3,3);   // rotate rpy around static axis
+  // because from pose matrix to rpy is not one to one, and there is singularity,
+  // it must be handled carefully
   Eigen::Vector3f rpy = R.eulerAngles(2,1,0);
   float pitch = rpy(1); // Rotation along y axis
-  pitch = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)-pitch));
-  pitch = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)+pitch));
+  
+  float pitch1 = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)-pitch));
+  float pitch2 = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)+pitch));
+  pitch = std::min(pitch1,pitch2);
   if (rot_diff>=10 || std::abs(pitch)>=10/180.0*M_PI)
   {
     cam2handbase_offset.setIdentity();
-    printf("cam2handbase_offset set to Identity");
+    printf("cam2handbase_offset set to Identity\n");
   }
   if (cam2handbase_offset!=Eigen::Matrix4f::Identity())
   {
@@ -782,14 +819,15 @@ template<class PointT, bool has_normal>
 void HandT42::removeSurroundingPointsAndAssignProbability(boost::shared_ptr<pcl::PointCloud<PointT> > scene, boost::shared_ptr<pcl::PointCloud<PointT> > scene_out, float dist_thres)
 {
   scene_out->clear();
-  scene_out->points.reserve(scene->points.size());
+  // scene_out->points.reserve(scene->points.size());
   pcl::transformPointCloudWithNormals(*scene, *scene, _handbase_in_cam.inverse());
   scene_out->points.reserve(scene->points.size());
   const float lambda = 231.04906018664843; // Exponential distribution: this makes about 0.003m the prob is 0.5
 #pragma omp parallel
   {
     std::map<std::string, boost::shared_ptr<pcl::KdTreeFLANN<pcl::PointXYZRGBNormal>>> kdtrees_local;
-    for (auto &h : _kdtrees)
+    // reset the kdtrees_local with the original _kdtrees
+    for (auto &h : _kdtrees) // _kdtree is the map from link name to its model kd tree
     {
       kdtrees_local[h.first].reset(new pcl::KdTreeFLANN<pcl::PointXYZRGBNormal>(*h.second));
     }
@@ -799,6 +837,7 @@ void HandT42::removeSurroundingPointsAndAssignProbability(boost::shared_ptr<pcl:
     {
       auto pt = scene->points[i];
       pcl::PointXYZRGBNormal pt_tmp;
+      // store point of scene to a temp point
       pt_tmp.x = pt.x;
       pt_tmp.y = pt.y;
       pt_tmp.z = pt.z;
@@ -809,15 +848,16 @@ void HandT42::removeSurroundingPointsAndAssignProbability(boost::shared_ptr<pcl:
       {
         float local_dist_thres = dist_thres;
         std::string name = h.first;
-        if (name == "finger_2_1" || name == "finger_1_1")
+        if (name == "r_gripper_finger_link" || name == "l_gripper_finger_link")
         {
           local_dist_thres = 0.005 * 0.005;
         }
-        else if (name == "base" || name == "swivel_1" || name == "swivel_2")
+        else if (name == "gripper_link")
         {
           local_dist_thres = 0.02 * 0.02;
         }
 
+        // extract the kdtree of current link
         boost::shared_ptr<pcl::KdTreeFLANN<pcl::PointXYZRGBNormal>> kdtree = h.second;
         std::vector<int> pointIdxNKNSearch(1);
         std::vector<float> pointNKNSquaredDistance(1);
@@ -849,42 +889,7 @@ void HandT42::removeSurroundingPointsAndAssignProbability(boost::shared_ptr<pcl:
     }
   }
 
-  //Remove outter side points
-  boost::shared_ptr<pcl::PointCloud<PointT> > scene_out_in_finger_2_2(new pcl::PointCloud<PointT>);
-  boost::shared_ptr<pcl::PointCloud<PointT> > scene_out_in_finger_1_2(new pcl::PointCloud<PointT>);
-  {
-    Eigen::Matrix4f finger2_2_in_handbase;
-    getTFHandBase("finger_2_2",finger2_2_in_handbase);
-    if (has_normal)
-      pcl::transformPointCloudWithNormals(*scene_out,*scene_out_in_finger_2_2,finger2_2_in_handbase.inverse());
-    else
-      pcl::transformPointCloud(*scene_out,*scene_out_in_finger_2_2,finger2_2_in_handbase.inverse());
-  }
-
-  {
-    Eigen::Matrix4f finger1_2_in_handbase;
-    getTFHandBase("finger_1_2",finger1_2_in_handbase);
-    if (has_normal)
-      pcl::transformPointCloudWithNormals(*scene_out,*scene_out_in_finger_1_2,finger1_2_in_handbase.inverse());
-    else
-      pcl::transformPointCloud(*scene_out,*scene_out_in_finger_1_2,finger1_2_in_handbase.inverse());
-  }
-
-  const float min_z = _finger_properties["finger_1_2"]._min_z;
-  boost::shared_ptr<pcl::PointCloud<PointT> > tmp(new pcl::PointCloud<PointT>);
-  tmp->points.reserve(scene_out->points.size());
-  for (int i=0;i<scene_out_in_finger_1_2->points.size();i++)
-  {
-    auto pt1 = scene_out_in_finger_1_2->points[i];
-    if (pt1.y<0 && pt1.z>=min_z) continue;
-
-    auto pt2 = scene_out_in_finger_2_2->points[i];
-    if (pt2.y<0 && pt2.z>=min_z) continue;
-
-    auto pt = scene_out->points[i];
-    tmp->points.push_back(pt);
-  }
-  pcl::transformPointCloudWithNormals(*tmp, *scene_out, _handbase_in_cam);
+  pcl::transformPointCloudWithNormals(*scene_out, *scene_out, _handbase_in_cam);
 }
 template void HandT42::removeSurroundingPointsAndAssignProbability<pcl::PointSurfel,true>(boost::shared_ptr<pcl::PointCloud<pcl::PointSurfel> > scene, boost::shared_ptr<pcl::PointCloud<pcl::PointSurfel> > scene_out, float dist_thres);
 

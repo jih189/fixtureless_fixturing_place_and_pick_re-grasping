@@ -4,21 +4,22 @@
 
 #include "Utils.h"
 #include "ConfigParser.h"
+#include <visualization_msgs/MarkerArray.h>
 
 
 class FingerProperty
-{
+{ // the finger head is pointing to x axis, so we need to stride on x
 public:
 EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   float _min_x, _min_y, _min_z, _max_x, _max_y, _max_z;    // Extreme points in init status
-  float _stride_z;
-  Eigen::MatrixXf _hist_alongz;   // 6XN Each bin, <min_pt, max_pt>
+  float _stride_x;
+  Eigen::MatrixXf _hist_alongx;   // 6XN Each bin, <min_pt, max_pt>
   int _num_division;
 
   FingerProperty();
   FingerProperty(PointCloudRGBNormal::Ptr model, int num_division);
   ~FingerProperty();
-  int getBinAlongZ(float z);
+  int getBinAlongX(float x);
 };
 
 
@@ -70,6 +71,9 @@ EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   optim::ArgPasser _pso_args;
   optim::algo_settings_t _pso_settings;
 
+  PointCloudRGBNormal::Ptr test1;
+  PointCloudRGBNormal::Ptr test2;
+  boost::shared_ptr<visualization_msgs::MarkerArray> markerarray;
 };
 
 

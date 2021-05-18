@@ -346,6 +346,7 @@ template<class PointT>
 void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand)
 {
   printf("before projection check, #hypo=%d\n", _pose_hypos.size());
+  // remember change the resolution for new camera
   const int H = 480, W = 640;
   std::vector<PoseHypo, Eigen::aligned_allocator<PoseHypo>> hypo_tmp = _pose_hypos;
   _pose_hypos.clear();
@@ -513,7 +514,7 @@ void PoseEstimator<PointT>::registerHandMesh(Hand *hand)
 {
   for (const auto& h:hand->_convex_meshes)
   {
-    if (!(h.first=="finger_1_1" || h.first=="finger_1_2" || h.first=="finger_2_1" || h.first=="finger_2_2")) continue;
+    if (!(h.first=="r_gripper_finger_link" || h.first=="l_gripper_finger_link")) continue;
     Eigen::Matrix4f model2handbase(Eigen::Matrix4f::Identity());
     hand->getTFHandBase(h.first, model2handbase);
     _sdf.registerMesh(h.second, h.first, model2handbase);
@@ -532,10 +533,11 @@ void PoseEstimator<PointT>::rejectByCollisionOrNonTouching(HandT42* hand)
   std::vector<PoseHypo,Eigen::aligned_allocator<PoseHypo> > hypo_tmp = _pose_hypos;
   _pose_hypos.clear();
 
-  std::vector<std::string> finger_names={"finger_1_2","finger_2_2", "finger_1_1", "finger_2_1"};
+  std::vector<std::string> finger_names={"r_gripper_finger_link","l_gripper_finger_link"};
   std::map<std::string, Eigen::MatrixXf> finger_cloud_eigens;
   for (auto finger_name:finger_names)
   {
+    // generate a finger eigen matrix for each finger
     if (hand->_component_status[finger_name]==false) continue;
     Eigen::Matrix4f finger2handbase(Eigen::Matrix4f::Identity());
     hand->getTFHandBase(finger_name,finger2handbase);
@@ -553,7 +555,7 @@ void PoseEstimator<PointT>::rejectByCollisionOrNonTouching(HandT42* hand)
   PointCloudRGBNormal::Ptr cloud_without_hand(new PointCloudRGBNormal);
   pcl::transformPointCloudWithNormals(*_cloud_withouthand_raw, *cloud_without_hand, hand->_handbase_in_cam.inverse());
   Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(cloud_without_hand, cloud_without_hand, 0.005);
-  kdtree.setInputCloud (cloud_without_hand);
+  kdtree.setInputCloud (cloud_without_hand); // cloud without hand in handbase
 
   pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> kdtree_hand;  // In handbase frame
   kdtree_hand.setInputCloud(hand->_hand_cloud);
@@ -572,10 +574,10 @@ void PoseEstimator<PointT>::rejectByCollisionOrNonTouching(HandT42* hand)
 {
   SDFchecker sdf(_sdf);
   std::map<std::string, Eigen::MatrixXf> finger_cloud_eigens_local = finger_cloud_eigens;
-  pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> kdtree_local = kdtree;
-  pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> kdtree_hand_local = kdtree_hand;
+  pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> kdtree_local = kdtree; // kdtree without hand
+  pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> kdtree_hand_local = kdtree_hand; // kdtree with hand
   boost::shared_ptr<pcl::PointCloud<PointT>> model(new pcl::PointCloud<PointT>);
-  pcl::copyPointCloud(*_model, *model);
+  pcl::copyPointCloud(*_model, *model); // object model
   std::map<std::string, bool> hand_component_status = hand->_component_status;
 
   #pragma omp for schedule(dynamic)
@@ -647,8 +649,8 @@ void PoseEstimator<PointT>::rejectByCollisionOrNonTouching(HandT42* hand)
     for (const auto &h:finger_cloud_eigens_local)
     {
       std::string name=h.first;
-      if (hand_component_status["finger_1_1"]==false && (name=="finger_1_1" || name=="finger_1_2")) continue;
-      if (hand_component_status["finger_2_1"]==false && (name=="finger_2_1" || name=="finger_2_2")) continue;
+      if (hand_component_status["r_gripper_finger_link"]==false && (name=="r_gripper_finger_link")) continue;
+      if (hand_component_status["l_gripper_finger_link"]==false && (name=="l_gripper_finger_link")) continue;
       float min_dist=std::numeric_limits<float>::max(), max_dist=-std::numeric_limits<float>::max();
       int num_inner_pt=0;
       float lower_bound=-std::numeric_limits<float>::max(), upper_bound=std::numeric_limits<float>::max();
@@ -672,7 +674,7 @@ void PoseEstimator<PointT>::rejectByCollisionOrNonTouching(HandT42* hand)
     }
 
     //One side not touch
-    if ( (non_touch["finger_1_1"] && non_touch["finger_1_2"]) || (non_touch["finger_2_1"] && non_touch["finger_2_2"]) )
+    if ( non_touch["r_gripper_finger_link"] || non_touch["l_gripper_finger_link"] )
     {
       sdf.transformMesh("object",model2handbase.inverse());
       continue;

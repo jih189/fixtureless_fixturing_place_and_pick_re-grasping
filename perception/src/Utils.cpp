@@ -151,6 +151,8 @@ void runICP(pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr pclSegment,
 
   if (icp.hasConverged())
   {
+
+    std::cout << "ICP converge" << std::endl;
     offsetTransform = icp.getFinalTransformation();
   }
   else
@@ -186,7 +188,7 @@ bool runICP(boost::shared_ptr<pcl::PointCloud<PointT>> cloud1, boost::shared_ptr
 /********************************* function: runICP *******************************************
 	*******************************************************************************************************/
 template<class PointT>
-float runICP(boost::shared_ptr<pcl::PointCloud<PointT> > pclSegment, boost::shared_ptr<pcl::PointCloud<PointT> > pclModel,         Eigen::Matrix4f &offsetTransform, int max_iter, float rejection_angle, float max_corres_dist, float score_thres)
+float runICP(boost::shared_ptr<pcl::PointCloud<PointT> > pclSegment, boost::shared_ptr<pcl::PointCloud<PointT> > pclModel, Eigen::Matrix4f &offsetTransform, int max_iter, float rejection_angle, float max_corres_dist, float score_thres)
 {
 
   PointCloudNormal::Ptr modelCloud(new PointCloudNormal);

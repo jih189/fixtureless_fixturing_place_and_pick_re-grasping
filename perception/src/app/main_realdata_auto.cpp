@@ -28,7 +28,7 @@ int main(int argc, char **argv)
   std::map<std::vector<int>, std::vector<std::pair<int, int>>> ppfs;
   std::ifstream ppf_file(cfg.yml["ppf_path"].as<std::string>(), std::ios::binary);
   boost::archive::binary_iarchive iarch(ppf_file);
-  iarch >> ppfs;
+  iarch >> ppfs; // this is point pair features
 
   PointCloudSurfel::Ptr model(new PointCloudSurfel);
   pcl::io::loadPLYFile(cfg.object_model_path, *model);
