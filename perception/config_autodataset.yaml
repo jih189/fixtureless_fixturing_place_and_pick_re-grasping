@@ -68,10 +68,32 @@ remove_noise:
 
 
 #NOTE: for simulation
+# hand_match:
+#   finger_min_match: 1    #Near handbase left/right fingers
+#   finger_dist_thres: 0.005
+#   finger_normal_angle: 30
+#   check_normal: true
+#   max_outter_pts: 300
+#   outter_pt_dist: 0.002
+#   outter_pt_dist_weight: 1
+#   planar_dist_thres: 0.0001
+#   pso:
+#     n_pop: 10
+#     n_gen: 15
+#     check_freq: 10     # Use big value to let it run until max iter
+#     pso_par_c_cog: 0.1
+#     pso_par_c_soc: 0.9
+#     pso_par_initial_w: 0      # Particle velocity initial scaling factor
+# lcp:
+#   dist: 0.001
+#   normal_angle: 10
+
+
+# #NOTE: for real
 hand_match:
   finger_min_match: 1    #Near handbase left/right fingers
-  finger_dist_thres: 0.005
-  finger_normal_angle: 30
+  finger_dist_thres: 0.03
+  finger_normal_angle: 40
   check_normal: true
   max_outter_pts: 300
   outter_pt_dist: 0.002
@@ -79,7 +101,7 @@ hand_match:
   planar_dist_thres: 0.0001
   pso:
     n_pop: 10
-    n_gen: 15
+    n_gen: 10
     check_freq: 10     # Use big value to let it run until max iter
     pso_par_c_cog: 0.1
     pso_par_c_soc: 0.9
@@ -87,31 +109,6 @@ hand_match:
 lcp:
   dist: 0.001
   normal_angle: 10
-
-
-# #NOTE: for real
-# hand_match:
-#   finger1_min_match: 5   #Near handbase left/right fingers
-#   finger2_min_match: 5    #Far handbase left/right fingers
-#   finger1_dist_thres: 0.005
-#   finger2_dist_thres: 0.005
-#   finger1_normal_angle: 60
-#   finger2_normal_angle: 60
-#   check_normal: true
-#   max_outter_pts: 300
-#   outter_pt_dist: 0.002
-#   outter_pt_dist_weight: 1
-#   planar_dist_thres: 0.001
-#   pso:
-#     n_pop: 15
-#     n_gen: 3   #Increase for better accuracy but slower
-#     check_freq: 10     # Use big value to let it run until max iter
-#     pso_par_c_cog: 0.1
-#     pso_par_c_soc: 0.9
-#     pso_par_initial_w: 0.0      # Particle velocity initial scaling factor
-# lcp:
-#   dist: 0.001
-#   normal_angle: 10
 
 
 pose_estimator_wrong_ratio: 1

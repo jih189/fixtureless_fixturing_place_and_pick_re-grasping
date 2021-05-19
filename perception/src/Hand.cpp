@@ -80,11 +80,11 @@ double objFuncPSO(const arma::vec& X, arma::vec* grad_out, optim::ArgPasser* arg
       float sq_planar_dist = (pt.x-nei.x)*(pt.x-nei.x) + (pt.y-nei.y)*(pt.y-nei.y);  //In handbase's frame
 
       // not match with the point cloud on another finger
-      if (name=="r_gripper_finger_link" && nei.y < 0.0)   //Right side finger
+      if (name=="r_gripper_finger_link" && (nei.y < 0.0 || nei.x < -0.028))   //Right side finger
       {
         continue;
       }
-      else if(name=="l_gripper_finger_link" && nei.y > 0.0)
+      else if(name=="l_gripper_finger_link" && (nei.y > 0.0 || nei.x < -0.028))
       {
         continue;
       }
@@ -319,8 +319,8 @@ void Hand::setCurScene(const cv::Mat &depth_meters, PointCloudRGBNormal::Ptr sce
   _depth_meters=depth_meters;
   _scene_sampled=boost::make_shared<PointCloudRGBNormal>();
   _scene_hand_region=boost::make_shared<PointCloudRGBNormal>();
-  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_organized, _scene_sampled, 0.001);
-  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_hand_region, _scene_hand_region,0.001);
+  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_organized, _scene_sampled, 0.002);
+  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_hand_region, _scene_hand_region,0.002);
 
   _handbase_in_cam = handbase_in_cam;
   handbaseICP(scene_organized); // this function will update the _handbase_in_cam, so be careful!!
@@ -360,7 +360,7 @@ void Hand::setCurScene(const cv::Mat &depth_meters, PointCloudRGBNormal::Ptr sce
     pcl::PassThrough<pcl::PointXYZRGBNormal> pass;
     pass.setInputCloud (scene_hand_region_removed_noise);
     pass.setFilterFieldName ("x");
-    pass.setFilterLimits (-0.0295, 0.05);
+    pass.setFilterLimits (0.0, 0.08);
     pass.filter (*scene_remove_swivel);   // In handbase frame
   }
 
@@ -530,8 +530,6 @@ void Hand::parseURDF()
   
     pcl::toPCLPointCloud2(*mesh_cloud, mesh->cloud);
 
-
-
     // Component init pose must be applied at beginning according to URDF !!
     pcl::PolygonMesh::Ptr convex_mesh(new pcl::PolygonMesh);
     pcl::io::loadOBJFile(cfg->yml["Hand"][name]["convex_mesh"].as<std::string>(), *convex_mesh);
@@ -582,7 +580,7 @@ void Hand::getTFHandBase(std::string cur_name, Eigen::Matrix4f &tf_in_handbase)
 
 void Hand::addComponent(std::string name, std::string parent_name, PointCloudRGBNormal::Ptr cloud, pcl::PolygonMesh::Ptr mesh, pcl::PolygonMesh::Ptr convex_mesh, const Matrix4f &tf_in_parent, const Matrix4f &tf_self)
 {
-  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(cloud, cloud, 0.002);
+  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(cloud, cloud, 0.004);
   _clouds[name] = cloud;
   _meshes[name] = mesh;
   _convex_meshes[name] = convex_mesh;
@@ -606,14 +604,11 @@ void Hand::makeHandCloud()
     PointCloudRGBNormal::Ptr tmp(new PointCloudRGBNormal);
     pcl::transformPointCloudWithNormals(*component_cloud, *tmp, model2handbase);
 
-    // test
-    // if (name == "r_gripper_finger_link"){
-    //   pcl::copyPointCloud(*tmp,*test1);
-    // }else if(name == "l_gripper_finger_link"){
-    //   pcl::copyPointCloud(*tmp,*test2);
-    // }
-
-    (*_hand_cloud) += (*tmp);
+    if(_component_status[name])
+      (*_hand_cloud) += (*tmp);
+    else
+      continue;
+    // (*_hand_cloud) += (*tmp);
 
     // build the kd tree of part of model
     boost::shared_ptr<pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> > kdtree(new pcl::KdTreeFLANN<pcl::PointXYZRGBNormal>);
@@ -677,13 +672,6 @@ bool Hand::matchOneComponentPSO(std::string model_name, float min_angle, float m
   _pso_settings.pso_initial_lb = arma::zeros(1) + min_angle;
   
 
-  // if(model_name == "r_gripper_finger_link"){//test
-  //   pcl::copyPointCloud(*_clouds[model_name],*test1);
-  // }
-  // else{
-  //   pcl::copyPointCloud(*_clouds[model_name],*test2);
-  // }
-
   std::map<std::string, std::string> pair_names;
   pair_names["r_gripper_finger_link"] = "l_gripper_finger_link";
   pair_names["l_gripper_finger_link"] = "r_gripper_finger_link";
@@ -738,7 +726,7 @@ bool Hand::matchOneComponentPSO(std::string model_name, float min_angle, float m
 void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
 {
   PointCloudRGBNormal::Ptr scene_sampled(new PointCloudRGBNormal);
-  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_organized, scene_sampled, 0.001);
+  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_organized, scene_sampled, 0.004);
 
   PointCloudRGBNormal::Ptr handbase(new PointCloudRGBNormal);
   pcl::copyPointCloud(*_clouds["gripper_link"],*handbase); // need to filter out point is not showing in the view!!!
@@ -763,38 +751,40 @@ void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
   //Now all in handbase
   Eigen::Matrix4f cam2handbase_offset(Eigen::Matrix4f::Identity());
 
-  float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, handbase, cam2handbase_offset, 70, 20, 0.0005, 1e-4);
+  float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, handbase, cam2handbase_offset, 70, 20, 0.0002, 1e-4);
 
   pcl::transformPointCloudWithNormals(*scene_handbase,*scene_handbase,cam2handbase_offset);
 
   // need to test in simulation to make cam2handbase_offset to be identity matrix
   // std::cout<<"cam2handbase_offset:\n"<<cam2handbase_offset<<"\n\n";
   float translation = cam2handbase_offset.block(0,3,3,1).norm();
-  if (translation >=0.0001) // set this higher in real world
+  if (translation >=0.005) // set this higher in real world
   {
     printf("cam2handbase_offset set to Identity, icp=%f, translation=%f, x=%f, y=%f\n",score, translation, std::abs(cam2handbase_offset(0,3)), std::abs(cam2handbase_offset(1,3)));
     cam2handbase_offset.setIdentity();
   }
+  else{
+    float rot_diff = Utils::rotationGeodesicDistance(Eigen::Matrix3f::Identity(), cam2handbase_offset.block(0,0,3,3)) / M_PI *180.0;
+    Eigen::Matrix3f R = cam2handbase_offset.block(0,0,3,3);   // rotate rpy around static axis
+    // because from pose matrix to rpy is not one to one, and there is singularity,
+    // it must be handled carefully
+    Eigen::Vector3f rpy = R.eulerAngles(2,1,0);
+    float pitch = rpy(1); // Rotation along y axis
+    
+    float pitch1 = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)-pitch));
+    float pitch2 = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)+pitch));
+    pitch = std::min(pitch1,pitch2);
+    if (rot_diff>=10 || std::abs(pitch)>=10/180.0*M_PI)
+    {
+      cam2handbase_offset.setIdentity();
+      printf("cam2handbase_offset set to Identity\n");
+    }
+    else
+    {
+      _component_status["gripper_link"] = true;
+    }
+  }
 
-  float rot_diff = Utils::rotationGeodesicDistance(Eigen::Matrix3f::Identity(), cam2handbase_offset.block(0,0,3,3)) / M_PI *180.0;
-  Eigen::Matrix3f R = cam2handbase_offset.block(0,0,3,3);   // rotate rpy around static axis
-  // because from pose matrix to rpy is not one to one, and there is singularity,
-  // it must be handled carefully
-  Eigen::Vector3f rpy = R.eulerAngles(2,1,0);
-  float pitch = rpy(1); // Rotation along y axis
-  
-  float pitch1 = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)-pitch));
-  float pitch2 = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)+pitch));
-  pitch = std::min(pitch1,pitch2);
-  if (rot_diff>=10 || std::abs(pitch)>=10/180.0*M_PI)
-  {
-    cam2handbase_offset.setIdentity();
-    printf("cam2handbase_offset set to Identity\n");
-  }
-  if (cam2handbase_offset!=Eigen::Matrix4f::Identity())
-  {
-    _component_status["handbase"] = true;
-  }
   _handbase_in_cam = _handbase_in_cam*cam2handbase_offset.inverse();
 
 }
@@ -850,7 +840,7 @@ void HandT42::removeSurroundingPointsAndAssignProbability(boost::shared_ptr<pcl:
         std::string name = h.first;
         if (name == "r_gripper_finger_link" || name == "l_gripper_finger_link")
         {
-          local_dist_thres = 0.005 * 0.005;
+          local_dist_thres = 0.01 * 0.01;
         }
         else if (name == "gripper_link")
         {
@@ -1004,7 +994,7 @@ void HandT42::fingerICP()
 void HandT42::adjustHandHeight()
 {
   makeHandCloud();
-  if ( _component_status["handbase"]==true )
+  if ( _component_status["gripper_link"]==true )
   {
     return;
   }

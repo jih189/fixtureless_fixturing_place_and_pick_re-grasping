@@ -18,8 +18,8 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <cv_bridge/cv_bridge.h>
 
-static const std::string TOPIC_NAME = "/head_camera/rgb/image_rect";
-static const std::string DEPTH_TOPIC_NAME = "/head_camera/depth/image_rect";
+static const std::string TOPIC_NAME = "/head_camera/rgb/image_raw";
+static const std::string DEPTH_TOPIC_NAME = "/head_camera/depth/image_raw";
 static const std::string CAM_INFO_NAME = "/head_camera/depth/camera_info";
 
 using namespace Eigen;
@@ -90,6 +90,8 @@ int main(int argc, char **argv)
   cv::namedWindow("view");
   cv::namedWindow("depth_view");
 
+  ros::WallTime start_time, end_time;
+
   initFlag = false;
 
   pcl::console::setVerbosityLevel(pcl::console::L_ALWAYS);
@@ -145,19 +147,20 @@ int main(int argc, char **argv)
   ros::Publisher object_only_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("object_only", 1);
   ros::Publisher predicted_hand_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("predicted_hand", 1);
   ros::Publisher predicted_object_pointcloud_pub = nh.advertise<PointCloudSurfel> ("predicted_object", 1);
-  ros::Publisher vis_pub = nh.advertise<visualization_msgs::MarkerArray>( "visualization_marker", 100);
 
   HandT42 hand(&cfg, cfg.cam_intrinsic);
 
   // tf::TransformBroadcaster object_pose_transform_broad_caster;
   // tf::Transform object_pose_transform;
 
-  ros::Rate loop_rate(30);
+  ros::Rate loop_rate(1);
   while(ros::ok()){
     ros::spinOnce();
     loop_rate.sleep();
-    if(scene_bgr.rows == 0)
+    if(scene_bgr.rows == 0 || scene_depth.rows == 0){
+      std::cout << "no image in!\n";
       continue;
+    }
 
     tf::StampedTransform tf_cam2gripper;
     tf_listener.waitForTransform("/head_camera_rgb_optical_frame", "/gripper_link", ros::Time(0), ros::Duration(1.0));
@@ -167,6 +170,8 @@ int main(int argc, char **argv)
 
     // handbase in left cam
     Eigen::Matrix4f handbase_in_cam = handbase_in_cam_in_affine3d.cast<float>().matrix();
+
+    start_time = ros::WallTime::now();
 
     // generate the rgb depth of scene
     PointCloudRGBNormal::Ptr scene_rgb(new PointCloudRGBNormal);
@@ -201,7 +206,7 @@ int main(int argc, char **argv)
 
       pass.setInputCloud(scene_rgb);
       pass.setFilterFieldName("x");
-      pass.setFilterLimits(-0.15, 0.05);
+      pass.setFilterLimits(-0.15, 0.08);
       pass.filter(*scene_rgb);
 
       pass.setInputCloud(scene_rgb);
@@ -239,9 +244,10 @@ int main(int argc, char **argv)
 
     // hand.adjustHandHeight();
     hand.makeHandCloud();
+    
     PointCloudRGBNormal::Ptr check_hand(new PointCloudRGBNormal);
     pcl::transformPointCloudWithNormals(*(hand._hand_cloud), *check_hand, hand._handbase_in_cam);
-
+    
     // extract the point cloud being to the object
     PointCloudSurfel::Ptr object1(new PointCloudSurfel);
     PointCloudSurfel::Ptr tmp_scene(new PointCloudSurfel);
@@ -296,69 +302,57 @@ int main(int argc, char **argv)
     }
     else{
       printf("pose found...\n");
+
+      est.clusterPoses(30, 0.015, true);
+      est.refineByICP();
+      est.clusterPoses(5, 0.003, false);
+      est.rejectByCollisionOrNonTouching(&hand);
+      est.rejectByRender(cfg.pose_estimator_wrong_ratio, &hand);
+      PoseHypo best(-1);
+      est.selectBest(best);
+      Eigen::Matrix4f model2scene = best._pose;
+      std::cout << "best tf:\n"
+                << model2scene << "\n\n";
+
+      PointCloudSurfel::Ptr predicted_model(new PointCloudSurfel);
+      pcl::transformPointCloud(*model, *predicted_model, model2scene);
+      predicted_model->header.frame_id = "/head_camera_rgb_optical_frame";
+      predicted_object_pointcloud_pub.publish(predicted_model);
+
+      // Eigen::Quaterniond eigen_quat(model2scene.block<3,3>(0,0).cast<double>());
+      // Eigen::Vector3d eigen_trans(model2scene.block<3,1>(0,3).cast<double>());
+
+
+      // tf::Quaternion tf_quat;
+      // tf::Vector3 tf_trans;
+      // tf::quaternionEigenToTF(eigen_quat, tf_quat);
+      // tf::vectorEigenToTF(eigen_trans, tf_trans);
+
+      // object_pose_transform.setOrigin(tf_trans);
+      // object_pose_transform.setRotation(tf_quat);
+      // object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "/object"));
+
+      object1->header.frame_id = "/head_camera_rgb_optical_frame";
+      object_only_pointcloud_pub.publish(object1);
     }
+    end_time = ros::WallTime::now();
 
-    est.clusterPoses(30, 0.015, true);
-    est.refineByICP();
-    est.clusterPoses(5, 0.003, false);
-    est.rejectByCollisionOrNonTouching(&hand);
-    est.rejectByRender(cfg.pose_estimator_wrong_ratio, &hand);
-    PoseHypo best(-1);
-    est.selectBest(best);
-    Eigen::Matrix4f model2scene = best._pose;
-    std::cout << "best tf:\n"
-              << model2scene << "\n\n";
-
-    PointCloudSurfel::Ptr predicted_model(new PointCloudSurfel);
-    pcl::transformPointCloud(*model, *predicted_model, model2scene);
-    predicted_model->header.frame_id = "/head_camera_rgb_optical_frame";
-    predicted_object_pointcloud_pub.publish(predicted_model);
-
-    // Eigen::Quaterniond eigen_quat(model2scene.block<3,3>(0,0).cast<double>());
-    // Eigen::Vector3d eigen_trans(model2scene.block<3,1>(0,3).cast<double>());
-
-
-    // tf::Quaternion tf_quat;
-    // tf::Vector3 tf_trans;
-    // tf::quaternionEigenToTF(eigen_quat, tf_quat);
-    // tf::vectorEigenToTF(eigen_trans, tf_trans);
-
-    // object_pose_transform.setOrigin(tf_trans);
-    // object_pose_transform.setRotation(tf_quat);
-    // object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "/object"));
-
-    object1->header.frame_id = "/head_camera_rgb_optical_frame";
-    object_only_pointcloud_pub.publish(object1);
-
+    ROS_INFO_STREAM("Exec time(ms): " << (end_time - start_time).toNSec()*1e-6);
+    
 
     check_hand->header.frame_id = "/head_camera_rgb_optical_frame";
     predicted_hand_pointcloud_pub.publish(check_hand);
 
     hand.reset();
     est.reset();
-    // vis_pub.publish(hand.markerarray);
 
     cv::imshow("view", scene_bgr);
     cv::imshow("depth_view", scene_depth);
-    cv::waitKey(30);
+    cv::waitKey(1);
   }
   
   cv::destroyWindow("view");
   cv::destroyWindow("depth_view");
-
-  // read depth scene and bgr scene
-  // cv::Mat scene_depth;
-  // Utils::readDepthImage(scene_depth, cfg.depth_path);
-  // cv::Mat scene_bgr = cv::imread(cfg.rgb_path);
-  
-
-
-
-
-  // // We treat Motoman left arm as world !!!!!
-  // Eigen::Matrix4f base_in_world = cfg.leftarm_in_base.inverse() * cfg.palm_in_baselink * cfg.handbase_in_palm;
-  // Eigen::Matrix4f handbase_in_leftarm = base_in_world;
-
 
   return 0;
 

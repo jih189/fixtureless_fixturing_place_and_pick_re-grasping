@@ -136,7 +136,7 @@ void PoseEstimator<PointT>::clusterPoses(float angle_diff, float dist_diff, bool
   const float y_symmetry = cfg->yml["object_symmetry"][model_name]["y"].as<double>()/180 * M_PI;
   const float z_symmetry = cfg->yml["object_symmetry"][model_name]["z"].as<double>()/180 * M_PI;
 
-  printf("object symmetry: x=%f, y=%f, z=%f\n",x_symmetry, y_symmetry, z_symmetry);
+  //printf("object symmetry: x=%f, y=%f, z=%f\n",x_symmetry, y_symmetry, z_symmetry);
 
   for (int i=1;i<hypo_tmp.size();i++)
   {
@@ -228,7 +228,7 @@ void PoseEstimator<PointT>::clusterPoses(float angle_diff, float dist_diff, bool
 
   }
 
-  printf("num of pose clusters: %d\n",_pose_hypos.size());
+  //printf("num of pose clusters: %d\n",_pose_hypos.size());
 
 }
 
