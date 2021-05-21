@@ -295,6 +295,7 @@ Hand::Hand(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K)
   _hand_cloud = boost::make_shared<PointCloudRGBNormal>();
   test1 = boost::make_shared<PointCloudRGBNormal>();
   test2 = boost::make_shared<PointCloudRGBNormal>();
+  _visible_set = boost::make_shared<PointCloudRGBNormal>();
   markerarray = boost::make_shared<visualization_msgs::MarkerArray>();
   _cam_K = cam_K;
 
@@ -399,6 +400,7 @@ void Hand::reset()
   _hand_cloud->clear();
   test1->clear();
   test2->clear();
+  _visible_set->clear();
   markerarray->markers.clear();
   _depth_meters.release();
   _scene_sampled->clear();
@@ -594,6 +596,7 @@ void Hand::addComponent(std::string name, std::string parent_name, PointCloudRGB
 void Hand::makeHandCloud()
 {
   _hand_cloud->clear();
+  std::string component_status_info = "";
   for (auto h:_clouds)
   {
     std::string name = h.first;
@@ -604,17 +607,19 @@ void Hand::makeHandCloud()
     PointCloudRGBNormal::Ptr tmp(new PointCloudRGBNormal);
     pcl::transformPointCloudWithNormals(*component_cloud, *tmp, model2handbase);
 
+    
+    component_status_info += (name + (_component_status[name] ? ": good | ": ": bad | "));
     if(_component_status[name])
       (*_hand_cloud) += (*tmp);
     else
       continue;
-    // (*_hand_cloud) += (*tmp);
 
     // build the kd tree of part of model
     boost::shared_ptr<pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> > kdtree(new pcl::KdTreeFLANN<pcl::PointXYZRGBNormal>);
     kdtree->setInputCloud(tmp);
     _kdtrees[name] = kdtree;
   }
+  ROS_INFO_STREAM("tracking status: " << component_status_info);
 }
 
 //For visualization
@@ -642,6 +647,32 @@ void Hand::makeHandMesh()
     pcl::io::saveOBJFile("/home/bowen/debug/handmesh/convex_"+name+".obj", *tmp);
     Utils::transformPolygonMesh(tmp, tmp, _handbase_in_cam);
     pcl::io::saveOBJFile("/home/bowen/debug/handmesh/convex_incam_"+name+".obj", *tmp);
+  }
+}
+
+void Hand::visibleHandCloud(PointCloudRGBNormal::Ptr handbase_cloud, PointCloudRGBNormal::Ptr visible_set){
+  visible_set->clear();
+
+  pcl::VoxelGridOcclusionEstimation<pcl::PointXYZRGBNormal> voxelFilter;
+  voxelFilter.setInputCloud(handbase_cloud);
+  voxelFilter.setLeafSize(0.005, 0.005, 0.005);
+  voxelFilter.initializeVoxelGrid();
+
+  for (size_t i=0;i<handbase_cloud->size();i++) 
+  { 
+
+    pcl::PointXYZRGBNormal pt = handbase_cloud->points[i]; 
+
+    Eigen::Vector3i grid_cordinates=voxelFilter.getGridCoordinates (pt.x, pt.y, pt.z); 
+
+    int grid_state; 
+
+    int ret=voxelFilter.occlusionEstimation( grid_state, grid_cordinates ); 
+
+    if (grid_state!=1) 
+    { 
+      visible_set->push_back(handbase_cloud->points[i]); 
+    } 
   }
 }
 
@@ -716,7 +747,7 @@ bool Hand::matchOneComponentPSO(std::string model_name, float min_angle, float m
   _tf_self[model_name].setIdentity();
   _tf_self[model_name](1,3) = angle;
   _component_status[model_name]=true;
-  printf("%s PSO final angle=%f, match_score=%f\n", model_name.c_str(), angle, -_pso_args.objval);
+  ROS_INFO("%s PSO final angle=%f, match_score=%f", model_name.c_str(), angle, -_pso_args.objval);
   return true;
 }
 
@@ -751,13 +782,24 @@ void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
   //Now all in handbase
   Eigen::Matrix4f cam2handbase_offset(Eigen::Matrix4f::Identity());
 
-  float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, handbase, cam2handbase_offset, 70, 20, 0.0002, 1e-4);
+  float hand_base_icp_dist = cfg->yml["hand_match"]["hand_base_icp_dist"].as<float>();
+
+  // filter out non visible part of the handbase
+  PointCloudRGBNormal::Ptr hand_in_handbase(new PointCloudRGBNormal);
+  pcl::transformPointCloudWithNormals(*handbase, *hand_in_handbase, _handbase_in_cam);
+  visibleHandCloud(hand_in_handbase, _visible_set);
+  pcl::transformPointCloudWithNormals(*_visible_set, *_visible_set, _handbase_in_cam.inverse());
+
+  float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, _visible_set, cam2handbase_offset, 70, 20, hand_base_icp_dist, 1e-4);
+
+  // float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, handbase, cam2handbase_offset, 70, 20, hand_base_icp_dist, 1e-4);
 
   pcl::transformPointCloudWithNormals(*scene_handbase,*scene_handbase,cam2handbase_offset);
 
   // need to test in simulation to make cam2handbase_offset to be identity matrix
   // std::cout<<"cam2handbase_offset:\n"<<cam2handbase_offset<<"\n\n";
   float translation = cam2handbase_offset.block(0,3,3,1).norm();
+  ROS_INFO("hand palm translation=%f, match_score=%f", translation, score);
   if (translation >=0.005) // set this higher in real world
   {
     printf("cam2handbase_offset set to Identity, icp=%f, translation=%f, x=%f, y=%f\n",score, translation, std::abs(cam2handbase_offset(0,3)), std::abs(cam2handbase_offset(1,3)));
@@ -981,7 +1023,7 @@ void HandT42::fingerICP()
 
   //Now all in handbase
   Eigen::Matrix4f cam2handbase_offset(Eigen::Matrix4f::Identity());
-  Utils::runICP<pcl::PointXYZRGBNormal>(scene_icp, finger_icp, cam2handbase_offset, 50, 15, 0.02);
+  Utils::runICP<pcl::PointXYZRGBNormal>(scene_icp, finger_icp, cam2handbase_offset, 50, 15, 0.002);
 
   pcl::transformPointCloudWithNormals(*scene_icp, *scene_icp, cam2handbase_offset);
 

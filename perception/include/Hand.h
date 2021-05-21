@@ -42,6 +42,7 @@ EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   void makeHandCloud();
   void makeHandMesh();
   void printComponents();
+  void visibleHandCloud(PointCloudRGBNormal::Ptr handbase_cloud, PointCloudRGBNormal::Ptr visible_set);
 
   template<class CloudT>
   void removeSurroundingPoints(boost::shared_ptr<CloudT> scene, boost::shared_ptr<CloudT> scene_out, float dist_thres);
@@ -73,6 +74,7 @@ EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   PointCloudRGBNormal::Ptr test1;
   PointCloudRGBNormal::Ptr test2;
+  PointCloudRGBNormal::Ptr _visible_set;
   boost::shared_ptr<visualization_msgs::MarkerArray> markerarray;
 };
 

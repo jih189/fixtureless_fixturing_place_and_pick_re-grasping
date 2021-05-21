@@ -146,6 +146,7 @@ int main(int argc, char **argv)
   ros::Publisher handbase_pub = nh.advertise<PointCloudRGBNormal> ("handbase_points", 1);
   ros::Publisher object_only_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("object_only", 1);
   ros::Publisher predicted_hand_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("predicted_hand", 1);
+  ros::Publisher visible_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("visible_part_of_hand", 1);
   ros::Publisher predicted_object_pointcloud_pub = nh.advertise<PointCloudSurfel> ("predicted_object", 1);
 
   HandT42 hand(&cfg, cfg.cam_intrinsic);
@@ -224,8 +225,6 @@ int main(int argc, char **argv)
 
     // scene_rgb is in camera base
     hand.setCurScene(scene_depth, scene_organized, scene_rgb, handbase_in_cam);
-
-    // hand.makeHandCloud();
 
     const float finger_min_match = cfg.yml["hand_match"]["finger_min_match"].as<float>();
     const float finger_dist_thres = cfg.yml["hand_match"]["finger_dist_thres"].as<float>();
@@ -311,8 +310,8 @@ int main(int argc, char **argv)
       PoseHypo best(-1);
       est.selectBest(best);
       Eigen::Matrix4f model2scene = best._pose;
-      std::cout << "best tf:\n"
-                << model2scene << "\n\n";
+      // std::cout << "best tf:\n"
+      //           << model2scene << "\n\n";
 
       PointCloudSurfel::Ptr predicted_model(new PointCloudSurfel);
       pcl::transformPointCloud(*model, *predicted_model, model2scene);
@@ -342,6 +341,9 @@ int main(int argc, char **argv)
 
     check_hand->header.frame_id = "/head_camera_rgb_optical_frame";
     predicted_hand_pointcloud_pub.publish(check_hand);
+
+    hand._visible_set->header.frame_id = "/gripper_link";
+    visible_pointcloud_pub.publish(hand._visible_set);
 
     hand.reset();
     est.reset();

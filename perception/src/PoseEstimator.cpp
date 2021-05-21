@@ -106,7 +106,7 @@ bool PoseEstimator<PointT>::runSuper4pcs(const std::map<std::vector<int>, std::v
 template<class PointT>
 void PoseEstimator<PointT>::clusterPoses(float angle_diff, float dist_diff, bool assign_id)
 {
-  printf("num original candidates = %d\n",_pose_hypos.size());
+  // ROS_INFO("num original candidates = %d\n",_pose_hypos.size());
   class HypoCompare
   {
   public:
@@ -228,7 +228,7 @@ void PoseEstimator<PointT>::clusterPoses(float angle_diff, float dist_diff, bool
 
   }
 
-  //printf("num of pose clusters: %d\n",_pose_hypos.size());
+  // ROS_INFO("num of pose clusters: %d\n",_pose_hypos.size());
 
 }
 
@@ -345,7 +345,7 @@ class CompareWrongRatio
 template<class PointT>
 void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand)
 {
-  printf("before projection check, #hypo=%d\n", _pose_hypos.size());
+  // printf("before projection check, #hypo=%d\n", _pose_hypos.size());
   // remember change the resolution for new camera
   const int H = 480, W = 640;
   std::vector<PoseHypo, Eigen::aligned_allocator<PoseHypo>> hypo_tmp = _pose_hypos;
@@ -459,7 +459,7 @@ void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand
     Q.pop();
     _pose_hypos.push_back(p);
   }
-  printf("after projection check, #hypo=%d\n", _pose_hypos.size());
+  // printf("after projection check, #hypo=%d\n", _pose_hypos.size());
 
 }
 

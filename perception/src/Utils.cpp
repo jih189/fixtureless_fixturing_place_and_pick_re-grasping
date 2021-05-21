@@ -223,6 +223,7 @@ float runICP(boost::shared_ptr<pcl::PointCloud<PointT> > pclSegment, boost::shar
   }
   else
   {
+    // std::cout << "not converge\n";
     offsetTransform.setIdentity();
   }
 

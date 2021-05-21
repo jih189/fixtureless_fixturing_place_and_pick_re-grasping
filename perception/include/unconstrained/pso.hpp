@@ -337,7 +337,7 @@ pso_int(arma::vec& init_out_vals, std::function<double (const arma::vec& vals_in
     //
     if (iter==n_gen)
     {
-        std::cout<<"PSO reach max iter\n";
+        // std::cout<<"PSO reach max iter\n";
     }
     if (vals_bound) {
         global_best_vec = arma::trans( invLinearTransform(global_best_vec.t(), bounds_type, lower_bounds, upper_bounds) );
