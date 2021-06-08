@@ -47,7 +47,7 @@
         <remap from="depth_registered/image_rect" to="/head_camera/depth/image_rect"/>
 
         <!-- Output: XYZ point cloud. If using PCL, subscribe as PointCloud<PointXYZ>.  (sensor_msgs/PointCloud2)  -->
-        <remap from="depth_registered/points" to="/point_cloud/points"/>
+        <remap from="depth_registered/points" to="/head_camera/depth_downsample/points"/>
 
     </node>
     

@@ -37,7 +37,6 @@ namespace coppeliasim_ros_control
     for(unsigned int j=0; j < transmissions.size(); j++)
       ROS_DEBUG_STREAM("joint " <<j << ": "<<transmissions[j].joints_[0].name_ ); 
 
-
     // Resize vectors to our DOF
     n_dof_ = transmissions.size();
     joint_names_.resize(n_dof_);
@@ -101,6 +100,7 @@ namespace coppeliasim_ros_control
         //continue;
       }
 
+
       // Add data from transmission
       joint_names_[j] = transmissions[j].joints_[0].name_;
       joint_position_[j] = 0.0;
@@ -136,6 +136,13 @@ namespace coppeliasim_ros_control
         joint_control_methods_[j] = POSITION;
         joint_handle = hardware_interface::JointHandle(js_interface_.getHandle(joint_names_[j]),
                                                        &joint_position_command_[j]);
+
+        float initpos;
+        if (simGetJointPosition(simGetObjectHandle(joint_names_[j].c_str()), &initpos) != -1){
+          ROS_DEBUG("init joint %s with value %f", joint_names_[j].c_str(), initpos);
+          joint_handle.setCommand(initpos);
+        }
+          
         pj_interface_.registerHandle(joint_handle);
       }
 
