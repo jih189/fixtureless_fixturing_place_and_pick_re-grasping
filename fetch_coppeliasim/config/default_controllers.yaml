@@ -53,7 +53,8 @@ gripper_controller:
   type: "position_controllers/JointTrajectoryController"
   joints:
     - r_gripper_finger_joint
-    - l_gripper_finger_joint
+    
+#- l_gripper_finger_joint
 
 
 # gripper_controller:
