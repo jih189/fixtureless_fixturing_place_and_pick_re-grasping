@@ -50,5 +50,7 @@
         <remap from="depth_registered/points" to="/head_camera/depth_downsample/points"/>
 
     </node>
+
+    <include file="$(find rail_segmentation)/launch/searchtable.launch" />
     
 </launch>
