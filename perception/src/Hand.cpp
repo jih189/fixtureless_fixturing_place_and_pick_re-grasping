@@ -289,7 +289,7 @@ Hand::Hand()
 
 }
 
-Hand::Hand(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K)
+Hand::Hand(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K, int width=640, int height=480)
 {
   cfg=cfg1;
   _hand_cloud = boost::make_shared<PointCloudRGBNormal>();
@@ -298,6 +298,9 @@ Hand::Hand(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K)
   _visible_set = boost::make_shared<PointCloudRGBNormal>();
   markerarray = boost::make_shared<visualization_msgs::MarkerArray>();
   _cam_K = cam_K;
+  in_cam = false;
+  cam_width = width;
+  cam_height = height;
 
   parseURDF();
   for (auto h:_clouds)
@@ -325,6 +328,9 @@ void Hand::setCurScene(const cv::Mat &depth_meters, PointCloudRGBNormal::Ptr sce
 
   _handbase_in_cam = handbase_in_cam;
   handbaseICP(scene_organized); // this function will update the _handbase_in_cam, so be careful!!
+
+  if(!in_cam)
+    return;
 
   //NOTE: we compare in handbase frame, so that kdtree only build once
   PointCloudRGBNormal::Ptr scene_in_handbase(new PointCloudRGBNormal);
@@ -650,7 +656,7 @@ void Hand::makeHandMesh()
   }
 }
 
-void Hand::visibleHandCloud(PointCloudRGBNormal::Ptr handbase_cloud, PointCloudRGBNormal::Ptr visible_set){
+float Hand::visibleHandCloud(PointCloudRGBNormal::Ptr handbase_cloud, PointCloudRGBNormal::Ptr visible_set){
   visible_set->clear();
 
   pcl::VoxelGridOcclusionEstimation<pcl::PointXYZRGBNormal> voxelFilter;
@@ -658,22 +664,43 @@ void Hand::visibleHandCloud(PointCloudRGBNormal::Ptr handbase_cloud, PointCloudR
   voxelFilter.setLeafSize(0.005, 0.005, 0.005);
   voxelFilter.initializeVoxelGrid();
 
+  double visiblenum = 0;
+  double inviewnum = 0;
+
   for (size_t i=0;i<handbase_cloud->size();i++) 
   { 
 
     pcl::PointXYZRGBNormal pt = handbase_cloud->points[i]; 
 
-    Eigen::Vector3i grid_cordinates=voxelFilter.getGridCoordinates (pt.x, pt.y, pt.z); 
-
+    Eigen::Vector3i grid_cordinates=voxelFilter.getGridCoordinates (pt.x, pt.y, pt.z);
+    
     int grid_state; 
 
-    int ret=voxelFilter.occlusionEstimation( grid_state, grid_cordinates ); 
+    int ret=voxelFilter.occlusionEstimation( grid_state, grid_cordinates );
 
-    if (grid_state!=1) 
-    { 
-      visible_set->push_back(handbase_cloud->points[i]); 
-    } 
+    if (grid_state==1)
+      continue;
+
+    visiblenum++;
+
+    if(pt.z < 0.01)
+      continue;
+
+    float p2x = (_cam_K(0,0) * pt.x + _cam_K(0,2) * pt.z) / pt.z;
+    float p2y = (_cam_K(1,1) * pt.y + _cam_K(1,2) * pt.z) / pt.z;
+
+    if(p2x < 0 || p2x >= cam_width || p2y < 0 || p2y >= cam_height)
+      continue;
+
+    inviewnum++;
+
+    visible_set->push_back(handbase_cloud->points[i]); 
   }
+
+  if (visiblenum == 0)
+    return 0.0;
+  else
+    return inviewnum / visiblenum;
 }
 
 
@@ -785,45 +812,54 @@ void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
   float hand_base_icp_dist = cfg->yml["hand_match"]["hand_base_icp_dist"].as<float>();
 
   // filter out non visible part of the handbase
-  PointCloudRGBNormal::Ptr hand_in_handbase(new PointCloudRGBNormal);
-  pcl::transformPointCloudWithNormals(*handbase, *hand_in_handbase, _handbase_in_cam);
-  visibleHandCloud(hand_in_handbase, _visible_set);
-  pcl::transformPointCloudWithNormals(*_visible_set, *_visible_set, _handbase_in_cam.inverse());
+  PointCloudRGBNormal::Ptr hand_in_cam(new PointCloudRGBNormal);
+  pcl::transformPointCloudWithNormals(*handbase, *hand_in_cam, _handbase_in_cam);
+  double inviewrate = visibleHandCloud(hand_in_cam, _visible_set);
 
-  float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, _visible_set, cam2handbase_offset, 70, 20, hand_base_icp_dist, 1e-4);
-
-  // float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, handbase, cam2handbase_offset, 70, 20, hand_base_icp_dist, 1e-4);
-
-  pcl::transformPointCloudWithNormals(*scene_handbase,*scene_handbase,cam2handbase_offset);
-
-  // need to test in simulation to make cam2handbase_offset to be identity matrix
-  // std::cout<<"cam2handbase_offset:\n"<<cam2handbase_offset<<"\n\n";
-  float translation = cam2handbase_offset.block(0,3,3,1).norm();
-  ROS_INFO("hand palm translation=%f, match_score=%f", translation, score);
-  if (translation >=0.005) // set this higher in real world
-  {
-    printf("cam2handbase_offset set to Identity, icp=%f, translation=%f, x=%f, y=%f\n",score, translation, std::abs(cam2handbase_offset(0,3)), std::abs(cam2handbase_offset(1,3)));
+  in_cam = false;
+  if (inviewrate < 0.8){
     cam2handbase_offset.setIdentity();
-  }
-  else{
-    float rot_diff = Utils::rotationGeodesicDistance(Eigen::Matrix3f::Identity(), cam2handbase_offset.block(0,0,3,3)) / M_PI *180.0;
-    Eigen::Matrix3f R = cam2handbase_offset.block(0,0,3,3);   // rotate rpy around static axis
-    // because from pose matrix to rpy is not one to one, and there is singularity,
-    // it must be handled carefully
-    Eigen::Vector3f rpy = R.eulerAngles(2,1,0);
-    float pitch = rpy(1); // Rotation along y axis
+    printf("hand is not in camera view\n");
+  }else{
     
-    float pitch1 = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)-pitch));
-    float pitch2 = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)+pitch));
-    pitch = std::min(pitch1,pitch2);
-    if (rot_diff>=10 || std::abs(pitch)>=10/180.0*M_PI)
+    pcl::transformPointCloudWithNormals(*_visible_set, *_visible_set, _handbase_in_cam.inverse());
+
+    float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, _visible_set, cam2handbase_offset, 70, 20, hand_base_icp_dist, 1e-4);
+
+    // float score = Utils::runICP<pcl::PointXYZRGBNormal>(scene_handbase, handbase, cam2handbase_offset, 70, 20, hand_base_icp_dist, 1e-4);
+
+    pcl::transformPointCloudWithNormals(*scene_handbase,*scene_handbase,cam2handbase_offset);
+
+    // need to test in simulation to make cam2handbase_offset to be identity matrix
+    // std::cout<<"cam2handbase_offset:\n"<<cam2handbase_offset<<"\n\n";
+    float translation = cam2handbase_offset.block(0,3,3,1).norm();
+    ROS_INFO("hand palm translation=%f, match_score=%f", translation, score);
+    if (translation >=0.005) // set this higher in real world
     {
+      printf("cam2handbase_offset set to Identity, icp=%f, translation=%f, x=%f, y=%f\n",score, translation, std::abs(cam2handbase_offset(0,3)), std::abs(cam2handbase_offset(1,3)));
       cam2handbase_offset.setIdentity();
-      printf("cam2handbase_offset set to Identity\n");
     }
-    else
-    {
-      _component_status["gripper_link"] = true;
+    else{
+      float rot_diff = Utils::rotationGeodesicDistance(Eigen::Matrix3f::Identity(), cam2handbase_offset.block(0,0,3,3)) / M_PI *180.0;
+      Eigen::Matrix3f R = cam2handbase_offset.block(0,0,3,3);   // rotate rpy around static axis
+      // because from pose matrix to rpy is not one to one, and there is singularity,
+      // it must be handled carefully
+      Eigen::Vector3f rpy = R.eulerAngles(2,1,0);
+      float pitch = rpy(1); // Rotation along y axis
+      
+      float pitch1 = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)-pitch));
+      float pitch2 = std::min(std::abs(pitch), std::abs(static_cast<float>(M_PI)+pitch));
+      pitch = std::min(pitch1,pitch2);
+      if (rot_diff>=10 || std::abs(pitch)>=10/180.0*M_PI)
+      {
+        cam2handbase_offset.setIdentity();
+        printf("cam2handbase_offset set to Identity\n");
+      }
+      else
+      {
+        in_cam = true;
+        _component_status["gripper_link"] = true;
+      }
     }
   }
 
@@ -831,7 +867,7 @@ void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
 
 }
 
-HandT42::HandT42(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K):Hand(cfg1, cam_K)
+HandT42::HandT42(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K, int width, int height):Hand(cfg1, cam_K, width, height)
 {
 }
 

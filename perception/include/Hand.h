@@ -32,7 +32,7 @@ class Hand
 public:
 EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   Hand();
-  Hand(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K);
+  Hand(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K, int width, int height);
   ~Hand();
   void setCurScene(const cv::Mat &depth_meters, PointCloudRGBNormal::Ptr scene_organized, PointCloudRGBNormal::Ptr scene_hand_region, const Eigen::Matrix4f &handbase_in_cam);
   void reset();
@@ -42,7 +42,7 @@ EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   void makeHandCloud();
   void makeHandMesh();
   void printComponents();
-  void visibleHandCloud(PointCloudRGBNormal::Ptr handbase_cloud, PointCloudRGBNormal::Ptr visible_set);
+  float visibleHandCloud(PointCloudRGBNormal::Ptr handbase_cloud, PointCloudRGBNormal::Ptr visible_set);
 
   template<class CloudT>
   void removeSurroundingPoints(boost::shared_ptr<CloudT> scene, boost::shared_ptr<CloudT> scene_out, float dist_thres);
@@ -75,7 +75,9 @@ EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   PointCloudRGBNormal::Ptr test1;
   PointCloudRGBNormal::Ptr test2;
   PointCloudRGBNormal::Ptr _visible_set;
+  bool in_cam;
   boost::shared_ptr<visualization_msgs::MarkerArray> markerarray;
+  int cam_width, cam_height;
 };
 
 
@@ -83,7 +85,7 @@ class HandT42:public Hand
 {
 public:
   HandT42();
-  HandT42(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K);
+  HandT42(ConfigParser *cfg1, const Eigen::Matrix3f &cam_K, int width, int height);
   ~HandT42();
 
   template<class PointT, bool use_normal>
@@ -92,9 +94,6 @@ public:
 
   void fingerICP();
   void adjustHandHeight();
-
-
-
 };
 
 #endif

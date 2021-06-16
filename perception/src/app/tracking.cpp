@@ -30,6 +30,7 @@ cv::Mat scene_depth;
 bool initFlag;
 Eigen::Matrix3f cam_info_K;
 
+// callback function for camera information
 void camInfoCallback(const sensor_msgs::CameraInfoConstPtr& caminfo){
   // get the camera intrisic from cam info
   for (int i=0;i<9;i++)
@@ -38,7 +39,7 @@ void camInfoCallback(const sensor_msgs::CameraInfoConstPtr& caminfo){
   }
 }
 
-
+// image callback function
 void imageCallback(const sensor_msgs::ImageConstPtr& msg) {
     try {
       scene_bgr = cv_bridge::toCvShare(msg, "bgr8")->image;
@@ -48,8 +49,8 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg) {
     }
 }
 
+// callback function for depth
 void imageDepthCallback(const sensor_msgs::ImageConstPtr& msg) {
-    
       
     try {
         cv::Mat scene_depthRaw;
@@ -149,10 +150,10 @@ int main(int argc, char **argv)
   ros::Publisher visible_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("visible_part_of_hand", 1);
   ros::Publisher predicted_object_pointcloud_pub = nh.advertise<PointCloudSurfel> ("predicted_object", 1);
 
-  HandT42 hand(&cfg, cfg.cam_intrinsic);
+  HandT42 hand(&cfg, cfg.cam_intrinsic, 640, 480);
 
-  // tf::TransformBroadcaster object_pose_transform_broad_caster;
-  // tf::Transform object_pose_transform;
+  tf::TransformBroadcaster object_pose_transform_broad_caster;
+  tf::Transform object_pose_transform;
 
   ros::Rate loop_rate(1);
   while(ros::ok()){
@@ -194,7 +195,6 @@ int main(int argc, char **argv)
     Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_rgb, scene_rgb, 0.001);
 
     // filter out point not in the hand link bounding
-
     Eigen::Matrix4f cam_in_handbase = handbase_in_cam.inverse();
     pcl::transformPointCloudWithNormals(*scene_rgb, *scene_rgb, cam_in_handbase);
 
@@ -221,11 +221,20 @@ int main(int argc, char **argv)
 
     // publish the pointcloud of hand
     scene_rgb->header.frame_id = "/head_camera_rgb_optical_frame";
-    handbase_pub.publish(scene_rgb); // the scene_rgb is correct
+    handbase_pub.publish(scene_rgb);
 
-    // scene_rgb is in camera base
+    // scene_rgb is in camera base, search the hand base and track it
     hand.setCurScene(scene_depth, scene_organized, scene_rgb, handbase_in_cam);
 
+    // if the hand is not in camera view, then continue
+    if(! hand.in_cam){
+      // reset the hand and estimator      
+      hand.reset();
+      // est.reset();
+      continue;
+    }
+
+    // track fingers according to the handbase
     const float finger_min_match = cfg.yml["hand_match"]["finger_min_match"].as<float>();
     const float finger_dist_thres = cfg.yml["hand_match"]["finger_dist_thres"].as<float>();
     const float finger_normal_angle = cfg.yml["hand_match"]["finger_normal_angle"].as<float>();
@@ -241,11 +250,10 @@ int main(int argc, char **argv)
       hand.matchOneComponentPSO("r_gripper_finger_link", 0, 0.05, false, finger_dist_thres, finger_normal_angle, finger_min_match);
     }
 
-    // hand.adjustHandHeight();
     hand.makeHandCloud();
     
-    PointCloudRGBNormal::Ptr check_hand(new PointCloudRGBNormal);
-    pcl::transformPointCloudWithNormals(*(hand._hand_cloud), *check_hand, hand._handbase_in_cam);
+    PointCloudRGBNormal::Ptr predicted_hand(new PointCloudRGBNormal);
+    pcl::transformPointCloudWithNormals(*(hand._hand_cloud), *predicted_hand, hand._handbase_in_cam);
     
     // extract the point cloud being to the object
     PointCloudSurfel::Ptr object1(new PointCloudSurfel);
@@ -288,7 +296,6 @@ int main(int argc, char **argv)
     PointCloudSurfel::Ptr scene_003(new PointCloudSurfel);
     pcl::copyPointCloud(*scene_rgb, *scene_003);
     Utils::downsamplePointCloud<pcl::PointSurfel>(scene_003, scene_003, 0.003);
-
     
     est.setCurScene(scene_003, cloud_withouthand_raw, object_segment, scene_bgr, scene_depth);
     est.registerHandMesh(&hand);
@@ -318,18 +325,17 @@ int main(int argc, char **argv)
       predicted_model->header.frame_id = "/head_camera_rgb_optical_frame";
       predicted_object_pointcloud_pub.publish(predicted_model);
 
-      // Eigen::Quaterniond eigen_quat(model2scene.block<3,3>(0,0).cast<double>());
-      // Eigen::Vector3d eigen_trans(model2scene.block<3,1>(0,3).cast<double>());
+      Eigen::Quaterniond eigen_quat(model2scene.block<3,3>(0,0).cast<double>());
+      Eigen::Vector3d eigen_trans(model2scene.block<3,1>(0,3).cast<double>());
 
+      tf::Quaternion tf_quat;
+      tf::Vector3 tf_trans;
+      tf::quaternionEigenToTF(eigen_quat, tf_quat);
+      tf::vectorEigenToTF(eigen_trans, tf_trans);
 
-      // tf::Quaternion tf_quat;
-      // tf::Vector3 tf_trans;
-      // tf::quaternionEigenToTF(eigen_quat, tf_quat);
-      // tf::vectorEigenToTF(eigen_trans, tf_trans);
-
-      // object_pose_transform.setOrigin(tf_trans);
-      // object_pose_transform.setRotation(tf_quat);
-      // object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "/object"));
+      object_pose_transform.setOrigin(tf_trans);
+      object_pose_transform.setRotation(tf_quat);
+      object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "/object"));
 
       object1->header.frame_id = "/head_camera_rgb_optical_frame";
       object_only_pointcloud_pub.publish(object1);
@@ -338,9 +344,8 @@ int main(int argc, char **argv)
 
     ROS_INFO_STREAM("Exec time(ms): " << (end_time - start_time).toNSec()*1e-6);
     
-
-    check_hand->header.frame_id = "/head_camera_rgb_optical_frame";
-    predicted_hand_pointcloud_pub.publish(check_hand);
+    predicted_hand->header.frame_id = "/head_camera_rgb_optical_frame";
+    predicted_hand_pointcloud_pub.publish(predicted_hand);
 
     hand._visible_set->header.frame_id = "/gripper_link";
     visible_pointcloud_pub.publish(hand._visible_set);
