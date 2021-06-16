@@ -219,12 +219,14 @@ int main(int argc, char **argv)
 
     pcl::transformPointCloudWithNormals(*scene_rgb, *scene_rgb, cam_in_handbase.inverse());
 
-    // publish the pointcloud of hand
-    scene_rgb->header.frame_id = "/head_camera_rgb_optical_frame";
-    handbase_pub.publish(scene_rgb);
+    // // publish the pointcloud of hand
+    // scene_rgb->header.frame_id = "/head_camera_rgb_optical_frame";
+    // handbase_pub.publish(scene_rgb);
 
     // scene_rgb is in camera base, search the hand base and track it
     hand.setCurScene(scene_depth, scene_organized, scene_rgb, handbase_in_cam);
+    hand.test1->header.frame_id = "/head_camera_rgb_optical_frame";
+    handbase_pub.publish(hand.test1);
 
     // if the hand is not in camera view, then continue
     if(! hand.in_cam){

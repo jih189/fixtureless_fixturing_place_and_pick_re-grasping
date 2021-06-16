@@ -1,0 +1,8 @@
+generate the obj file from dae with meshlab
+for example, gripper_link
+generate the pointcloud from mesh by
+pcl_mesh2pcd gripper_link.obj gripper_link.pcd -leaf_size 0.001
+pcl_pcd2ply gripper_link.pcd gripper_link.ply
+mkdir result
+rosrun icra20_manipulation_pose computePPF gripper_link.ply result
+cd result

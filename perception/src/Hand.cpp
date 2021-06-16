@@ -521,7 +521,6 @@ void Hand::parseURDF()
       pt.y *= scale[1];
       pt.z *= scale[2];
     }
-
     
     pcl::PolygonMesh::Ptr mesh(new pcl::PolygonMesh);
 
@@ -559,6 +558,7 @@ void Hand::parseURDF()
 
 
     std::cout<<"adding component name:"+name<<std::endl;
+    
     addComponent(name,parent_name,cloud,mesh,convex_mesh,tf_in_parent,Eigen::Matrix4f::Identity());
   }
 
@@ -589,6 +589,7 @@ void Hand::getTFHandBase(std::string cur_name, Eigen::Matrix4f &tf_in_handbase)
 void Hand::addComponent(std::string name, std::string parent_name, PointCloudRGBNormal::Ptr cloud, pcl::PolygonMesh::Ptr mesh, pcl::PolygonMesh::Ptr convex_mesh, const Matrix4f &tf_in_parent, const Matrix4f &tf_self)
 {
   Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(cloud, cloud, 0.004);
+
   _clouds[name] = cloud;
   _meshes[name] = mesh;
   _convex_meshes[name] = convex_mesh;
@@ -814,10 +815,13 @@ void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
   // filter out non visible part of the handbase
   PointCloudRGBNormal::Ptr hand_in_cam(new PointCloudRGBNormal);
   pcl::transformPointCloudWithNormals(*handbase, *hand_in_cam, _handbase_in_cam);
+
+  pcl::copyPointCloud(*hand_in_cam,*test1);
+
   double inviewrate = visibleHandCloud(hand_in_cam, _visible_set);
 
   in_cam = false;
-  if (inviewrate < 0.8){
+  if (inviewrate < 0.5){
     cam2handbase_offset.setIdentity();
     printf("hand is not in camera view\n");
   }else{
