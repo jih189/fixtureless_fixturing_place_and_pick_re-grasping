@@ -48,6 +48,7 @@ class RegripPlanner():
 
         self.__loadFreeAirGrip()
         self.__loadFreeTablePlacement()
+        self.handtmp = None
 
 
     def __loadFreeAirGrip(self):
@@ -110,12 +111,6 @@ class RegripPlanner():
 
     def addStartGrasp(self, starthandwidth, startrotmat4):
 
-        # axx = startrotmat4.getRow3(0)
-        # axx_d = 10 * np.array([axx[0], axx[1], axx[2]])
-        # startrotmat4.setCell(3,0,startrotmat4.getCell(3,0) + axx_d[0])
-        # startrotmat4.setCell(3,1,startrotmat4.getCell(3,1) + axx_d[1])
-        # startrotmat4.setCell(3,2,startrotmat4.getCell(3,2) + axx_d[2])
-
         self.regg.add_node('s')
         # # check which placement this grasp belong to
         for p in range(len(self.placementid)):
@@ -155,18 +150,20 @@ class RegripPlanner():
         npnodeobj = NodePath('obj')
         npnodeobj.attachNewNode(geomnodeobj)
         npnodeobj.reparentTo(base.render)
+        pandageom.plotAxisSelf(base.render, spos=Vec3(0,0,0))
 
     def showHand(self, hndjawwidth, hndrotmat, base):
-        # axx = hndrotmat.getRow3(0)
-        # axx_d = 10 * np.array([axx[0], axx[1], axx[2]])
-        # hndrotmat.setCell(3,0,hndrotmat.getCell(3,0) + axx_d[0])
-        # hndrotmat.setCell(3,1,hndrotmat.getCell(3,1) + axx_d[1])
-        # hndrotmat.setCell(3,2,hndrotmat.getCell(3,2) + axx_d[2])
 
-        handtmp = fetch_grippernm.Fetch_gripperNM(hndcolor=[0, 1, 0, .5])
-        handtmp.setMat(pandanpmat4=hndrotmat)
-        handtmp.setJawwidth(hndjawwidth)
-        handtmp.reparentTo(base.render)
+        if self.handtmp == None:
+            self.handtmp = fetch_grippernm.Fetch_gripperNM(hndcolor=[0, 1, 0, .5])
+            self.handtmp.setMat(pandanpmat4=hndrotmat)
+            self.handtmp.setJawwidth(hndjawwidth)
+            self.handtmp.reparentTo(base.render)
+
+        else:
+            self.handtmp.setMat(pandanpmat4=hndrotmat)
+            self.handtmp.setJawwidth(hndjawwidth)
+        
 
 
         
@@ -197,5 +194,6 @@ if __name__=='__main__':
     # nx.draw(planner.regg, with_labels=True)
     # plt.draw()
     # plt.show()
+
 
     base.run()

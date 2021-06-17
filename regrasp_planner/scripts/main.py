@@ -104,49 +104,72 @@ if __name__=='__main__':
 
    ## show the manipulation position in rviz
    # marker = showManipulationPos(manipulationposx, manipulationposy, heightresult.tableHeight)
+   # add the table as a collision object into the world
    robot.addCollisionObject("table", manipulationposx, manipulationposy, heightresult.tableHeight)
-   (trans,rot) = listener.lookupTransform('/world', '/object', rospy.Time(0))
-   robot.addManipulatedObject("object", trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3], "objects/cuboid.stl")
+   foundObject = True
+   try:
+      # attand the object as a part of the arm
+      listener.waitForTransform('/world', '/object', rospy.Time(), rospy.Duration(4.0))
+      (trans,rot) = listener.lookupTransform('/world', '/object', rospy.Time())
+      robot.addManipulatedObject("object", trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3], "objects/cuboid.stl")
 
-   ## get the current grasp
-   (trans,rot) = listener.lookupTransform('/object', '/gripper_link', rospy.Time(0))
-   hand_grasp_pose = tf.TransformerROS().fromTranslationRotation(trans, rot)
+      ## get the current grasp in the object frame
+      listener.waitForTransform('/object', '/gripper_link', rospy.Time(), rospy.Duration(4.0))
+      rospy.sleep(1.0) # it needs 1 second to prepare something I do not know why
+      (trans,rot) = listener.lookupTransform('/object', '/gripper_link', rospy.Time())
+      hand_grasp_pose = tf.TransformerROS().fromTranslationRotation(trans, rot)
+      startpose = Mat4( hand_grasp_pose[0][0],hand_grasp_pose[1][0],hand_grasp_pose[2][0],0.0, \
+                        hand_grasp_pose[0][1],hand_grasp_pose[1][1],hand_grasp_pose[2][1],0.0, \
+                        hand_grasp_pose[0][2],hand_grasp_pose[1][2],hand_grasp_pose[2][2],0.0, \
+                        hand_grasp_pose[0][3] * 1000,hand_grasp_pose[1][3] * 1000,hand_grasp_pose[2][3] * 1000,1.0)
+      ## convert it to be used in panda3d
+      startpose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * startpose
 
-   ## get current hand width
-   (trans,rot) = listener.lookupTransform('/gripper_link', '/r_gripper_finger_link', rospy.Time(0))
+      ## get current hand width
+      (trans,rot) = listener.lookupTransform('/gripper_link', '/r_gripper_finger_link', rospy.Time())
+      starthandwidth = trans[1] * 1000
 
-   startpose = Mat4( hand_grasp_pose[0][0],hand_grasp_pose[1][0],hand_grasp_pose[2][0],hand_grasp_pose[3][0], \
-                     hand_grasp_pose[0][1],hand_grasp_pose[1][1],hand_grasp_pose[2][1],hand_grasp_pose[3][1], \
-                     hand_grasp_pose[0][2],hand_grasp_pose[1][2],hand_grasp_pose[2][2],hand_grasp_pose[3][2], \
-                     hand_grasp_pose[0][3],hand_grasp_pose[1][3],hand_grasp_pose[2][3],hand_grasp_pose[3][3])
-   starthandwidth = trans[1] * 1000
+   except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+      print "fail to detect the object"
+      foundObject = False
 
-   planner.addStartGrasp(starthandwidth, startpose)
-   planner.plotObject(base)
-   planner.showHand(starthandwidth, startpose, base)
-
+   ## set goal grasp pose in object frame
    goalpose = Mat4(1.0,0.0,0.0,0.0,0.0,0.0,-1.0,0.0,0.0,1.0,0.0,0.0,53.3199386597,-8.46575927734,-4.76837158203e-07,1.0)
    goalhandwidth = 38.999997139
    planner.addGoalGrasp(goalhandwidth, goalpose)
-   planner.showgraph()
-   placementsequence = planner.searchPath()
-   print "placement sequence ", placementsequence
-
-   ## 
    
+   if foundObject:
+      planner.addStartGrasp(starthandwidth, startpose)
+      # planner.showgraph()
+      placementsequence = planner.searchPath()
 
-   # rate = rospy.Rate(10.0)
-   # while not rospy.is_shutdown():
-   #    try:
-   #       (trans,rot) = listener.lookupTransform('/world', '/object', rospy.Time(0))
-   #       robot.addManipulatedObject("object", trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3], "objects/cuboid.stl")
-   #    except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-   #       continue
-
-
-   # while not rospy.is_shutdown():
-   #     marker_pub.publish(marker)
+      planner.showHand(starthandwidth, startpose, base)
+      print "placement sequence ", placementsequence
 
    # raw_input("press enter!")
+   # show object state in hand
+   planner.plotObject(base)
+   
+   def myFunction(task):
+      (trans,rot) = listener.lookupTransform('/object', '/gripper_link', rospy.Time())
+      hand_grasp_pose = tf.TransformerROS().fromTranslationRotation(trans, rot)
+
+      ## get current hand width
+      (trans,rot) = listener.lookupTransform('/gripper_link', '/r_gripper_finger_link', rospy.Time())
+
+      startpose = Mat4( hand_grasp_pose[0][0],hand_grasp_pose[1][0],hand_grasp_pose[2][0],0.0, \
+                        hand_grasp_pose[0][1],hand_grasp_pose[1][1],hand_grasp_pose[2][1],0.0, \
+                        hand_grasp_pose[0][2],hand_grasp_pose[1][2],hand_grasp_pose[2][2],0.0, \
+                        hand_grasp_pose[0][3] * 1000,hand_grasp_pose[1][3] * 1000,hand_grasp_pose[2][3] * 1000,1.0)
+      starthandwidth = trans[1] * 1000
+
+      ## convert it to be used in panda3d
+      startpose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * startpose
+
+      planner.showHand(starthandwidth, startpose, base)
+      return task.again
+
+   # myTask = taskMgr.doMethodLater(0.1, myFunction, 'tickTask')
+
   
    base.run()
