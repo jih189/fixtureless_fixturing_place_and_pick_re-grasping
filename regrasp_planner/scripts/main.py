@@ -29,10 +29,9 @@ from regrasp_planner import RegripPlanner
 
 import rospy
 
-import actionlib
-import std_srvs
 from std_srvs.srv import Empty
 from rail_segmentation.srv import SearchTable
+from icra20_manipulation_pose.srv import SearchObject
 
 from visualization_msgs.msg import Marker
 from fetch_robot import Fetch_Robot
@@ -87,11 +86,15 @@ if __name__=='__main__':
 
    heightresult = 0.0
    # manipulation area selection, given the pointcloud to generate the position to manipulate
+   rospy.wait_for_service('searchObject')
+   objectSearcherTrigger = rospy.ServiceProxy('searchObject', SearchObject)
+
    rospy.wait_for_service('table_searcher/search_table')
    tableSearcher = rospy.ServiceProxy('table_searcher/search_table', SearchTable)
+
    try:
       heightresult = tableSearcher()
-      print "table height = ", heightresult
+      print "table height = ", heightresult.tableHeight
    except rospy.ServiceException as exc:
       print("Service did not process request: " + str(exc))
 
@@ -101,6 +104,9 @@ if __name__=='__main__':
    ## move the end-effector into robot's camera view
    robot = Fetch_Robot()
    robot.goto_pose(0.3638, 0.2, 0.818, -0.081003, -0.250516, -0.522513, 0.810962)
+
+   ## launch the tracker
+   objectSearcherTrigger(True)
 
    ## show the manipulation position in rviz
    # marker = showManipulationPos(manipulationposx, manipulationposy, heightresult.tableHeight)
@@ -115,7 +121,7 @@ if __name__=='__main__':
 
       ## get the current grasp in the object frame
       listener.waitForTransform('/object', '/gripper_link', rospy.Time(), rospy.Duration(4.0))
-      rospy.sleep(1.0) # it needs 1 second to prepare something I do not know why
+      rospy.sleep(1.0) # it needs wait 5 seconds for the robot to update the object's pose
       (trans,rot) = listener.lookupTransform('/object', '/gripper_link', rospy.Time())
       hand_grasp_pose = tf.TransformerROS().fromTranslationRotation(trans, rot)
       startpose = Mat4( hand_grasp_pose[0][0],hand_grasp_pose[1][0],hand_grasp_pose[2][0],0.0, \
@@ -132,6 +138,9 @@ if __name__=='__main__':
    except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
       print "fail to detect the object"
       foundObject = False
+
+   ## stop the tracker
+   objectSearcherTrigger(False)
 
    ## set goal grasp pose in object frame
    goalpose = Mat4(1.0,0.0,0.0,0.0,0.0,0.0,-1.0,0.0,0.0,1.0,0.0,0.0,53.3199386597,-8.46575927734,-4.76837158203e-07,1.0)

@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   sensor_msgs
   std_msgs
+  std_srvs
   message_generation
   cv_bridge
   pcl_ros
@@ -24,6 +25,16 @@ find_package(OpenCV REQUIRED)
 find_package(OpenMP REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(BLAS REQUIRED )
+
+################################################
+## Declare ROS messages, services and actions ##
+################################################
+
+## Generate services in the 'srv' folder
+add_service_files(
+  FILES
+  SearchObject.srv
+)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
 

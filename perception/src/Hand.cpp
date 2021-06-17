@@ -838,7 +838,7 @@ void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
     // std::cout<<"cam2handbase_offset:\n"<<cam2handbase_offset<<"\n\n";
     float translation = cam2handbase_offset.block(0,3,3,1).norm();
     ROS_INFO("hand palm translation=%f, match_score=%f", translation, score);
-    if (translation >=0.005) // set this higher in real world
+    if (translation >=0.005 || isinf(score)) // set this higher in real world
     {
       printf("cam2handbase_offset set to Identity, icp=%f, translation=%f, x=%f, y=%f\n",score, translation, std::abs(cam2handbase_offset(0,3)), std::abs(cam2handbase_offset(1,3)));
       cam2handbase_offset.setIdentity();

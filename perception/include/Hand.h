@@ -1,7 +1,7 @@
 #ifndef HAND_HH_
 #define HAND_HH_
 
-
+#include <math.h>
 #include "Utils.h"
 #include "ConfigParser.h"
 #include <visualization_msgs/MarkerArray.h>

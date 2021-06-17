@@ -18,17 +18,22 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <cv_bridge/cv_bridge.h>
 
+#include <boost/thread/thread.hpp>
+
+#include <icra20_manipulation_pose/SearchObject.h>
+
 static const std::string TOPIC_NAME = "/head_camera/rgb/image_raw";
 static const std::string DEPTH_TOPIC_NAME = "/head_camera/depth/image_raw";
 static const std::string CAM_INFO_NAME = "/head_camera/depth/camera_info";
 
 using namespace Eigen;
 
-
 cv::Mat scene_bgr;
 cv::Mat scene_depth;
 bool initFlag;
 Eigen::Matrix3f cam_info_K;
+Eigen::Matrix4f model2scene;
+bool isTracking;
 
 // callback function for camera information
 void camInfoCallback(const sensor_msgs::CameraInfoConstPtr& caminfo){
@@ -84,12 +89,60 @@ void imageDepthCallback(const sensor_msgs::ImageConstPtr& msg) {
     }
 }
 
+void publish_object_state(int* publish_rate){
+
+  ros::Rate loop_rate(*publish_rate);
+
+  tf::TransformBroadcaster object_pose_transform_broad_caster;
+  tf::Transform object_pose_transform;
+  
+  while(ros::ok()){
+
+    if(model2scene.isIdentity() || !isTracking){
+      continue;
+    }
+    Eigen::Quaterniond eigen_quat(model2scene.block<3,3>(0,0).cast<double>());
+    Eigen::Vector3d eigen_trans(model2scene.block<3,1>(0,3).cast<double>());
+
+    tf::Quaternion tf_quat;
+    tf::Vector3 tf_trans;
+    tf::quaternionEigenToTF(eigen_quat, tf_quat);
+    tf::vectorEigenToTF(eigen_trans, tf_trans);
+
+    object_pose_transform.setOrigin(tf_trans);
+    object_pose_transform.setRotation(tf_quat);
+    object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "/object"));
+
+    loop_rate.sleep();
+  }
+}
+
+bool searchObjectTrig(icra20_manipulation_pose::SearchObject::Request &req,
+        icra20_manipulation_pose::SearchObject::Response &res){
+
+  if(req.startsearch){
+    isTracking = true;
+  }else{
+    isTracking = false;
+  }
+  
+  return true;
+}
+
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "tracking");
   ros::NodeHandle nh;
   cv::namedWindow("view");
   cv::namedWindow("depth_view");
+
+  model2scene.setIdentity();
+
+  isTracking = false;
+
+  // spawn another thread
+  int rate_b = 5;
+  boost::thread thread_b(publish_object_state, &rate_b);
 
   ros::WallTime start_time, end_time;
 
@@ -149,16 +202,21 @@ int main(int argc, char **argv)
   ros::Publisher predicted_hand_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("predicted_hand", 1);
   ros::Publisher visible_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("visible_part_of_hand", 1);
   ros::Publisher predicted_object_pointcloud_pub = nh.advertise<PointCloudSurfel> ("predicted_object", 1);
+  ros::ServiceServer service = nh.advertiseService("searchObject", searchObjectTrig);
 
   HandT42 hand(&cfg, cfg.cam_intrinsic, 640, 480);
-
-  tf::TransformBroadcaster object_pose_transform_broad_caster;
-  tf::Transform object_pose_transform;
 
   ros::Rate loop_rate(1);
   while(ros::ok()){
     ros::spinOnce();
     loop_rate.sleep();
+
+    if(!isTracking){
+      ROS_INFO("not tracking!");
+      continue;
+    }
+      
+
     if(scene_bgr.rows == 0 || scene_depth.rows == 0){
       std::cout << "no image in!\n";
       continue;
@@ -307,6 +365,7 @@ int main(int argc, char **argv)
     if (!succeed)
     {
       printf("No pose found...\n");
+      model2scene.setIdentity();
     }
     else{
       printf("pose found...\n");
@@ -318,7 +377,7 @@ int main(int argc, char **argv)
       est.rejectByRender(cfg.pose_estimator_wrong_ratio, &hand);
       PoseHypo best(-1);
       est.selectBest(best);
-      Eigen::Matrix4f model2scene = best._pose;
+      model2scene = best._pose;
       // std::cout << "best tf:\n"
       //           << model2scene << "\n\n";
 
@@ -327,18 +386,7 @@ int main(int argc, char **argv)
       predicted_model->header.frame_id = "/head_camera_rgb_optical_frame";
       predicted_object_pointcloud_pub.publish(predicted_model);
 
-      Eigen::Quaterniond eigen_quat(model2scene.block<3,3>(0,0).cast<double>());
-      Eigen::Vector3d eigen_trans(model2scene.block<3,1>(0,3).cast<double>());
-
-      tf::Quaternion tf_quat;
-      tf::Vector3 tf_trans;
-      tf::quaternionEigenToTF(eigen_quat, tf_quat);
-      tf::vectorEigenToTF(eigen_trans, tf_trans);
-
-      object_pose_transform.setOrigin(tf_trans);
-      object_pose_transform.setRotation(tf_quat);
-      object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "/object"));
-
+      // publish the pointcloud belong to the object
       object1->header.frame_id = "/head_camera_rgb_optical_frame";
       object_only_pointcloud_pub.publish(object1);
     }
@@ -362,6 +410,8 @@ int main(int argc, char **argv)
   
   cv::destroyWindow("view");
   cv::destroyWindow("depth_view");
+
+  thread_b.join();
 
   return 0;
 
