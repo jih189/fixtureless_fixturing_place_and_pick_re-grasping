@@ -14,6 +14,7 @@ import pandaplotutils.pandactrl as pandactrl
 import pandaplotutils.pandageom as pandageom
 import trimesh
 from utils import collisiondetection as cd
+from utils import dbcvt as dc
 import matplotlib.pyplot as plt
 from matplotlib import collections as mc
 from database import dbaccess as db
@@ -131,6 +132,20 @@ class RegripPlanner():
         for path in self.shortestpaths:
             result.append(path[1:-1])
         return result
+
+    def getPlacements(self, placementids):
+        results = []
+        for i in placementids:
+            sql = "SELECT freetabletopplacement.rotmat FROM freetabletopplacement WHERE \
+                    freetabletopplacement.idfreetabletopplacement=%d" % i
+            result = dc.strToMat4(self.gdb.execute(sql)[0][0])
+            # need to convert it back to normal metrics
+            results.append(np.array([[result[0][0],result[1][0],result[2][0],result[3][0]/1000.0], \
+                                     [result[0][1],result[1][1],result[2][1],result[3][1]/1000.0], \
+                                     [result[0][2],result[1][2],result[2][2],result[3][2]/1000.0], \
+                                     [result[0][3],result[1][3],result[2][3],result[3][3]]]))
+        return results
+
 
     def showPlacementSequence(self, sequence, base):
         distancebetweencell = 300

@@ -133,8 +133,8 @@ int main(int argc, char **argv)
 {
   ros::init(argc, argv, "tracking");
   ros::NodeHandle nh;
-  cv::namedWindow("view");
-  cv::namedWindow("depth_view");
+  // cv::namedWindow("view");
+  // cv::namedWindow("depth_view");
 
   model2scene.setIdentity();
 
@@ -403,13 +403,13 @@ int main(int argc, char **argv)
     hand.reset();
     est.reset();
 
-    cv::imshow("view", scene_bgr);
-    cv::imshow("depth_view", scene_depth);
-    cv::waitKey(1);
+    // cv::imshow("view", scene_bgr);
+    // cv::imshow("depth_view", scene_depth);
+    // cv::waitKey(1);
   }
   
-  cv::destroyWindow("view");
-  cv::destroyWindow("depth_view");
+  // cv::destroyWindow("view");
+  // cv::destroyWindow("depth_view");
 
   thread_b.join();
 

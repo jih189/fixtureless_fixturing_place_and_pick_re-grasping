@@ -44,7 +44,8 @@ class Fetch_Robot():
         table_pose.pose.orientation.z = 0.0
         table_pose.pose.orientation.w = 1.0
         
-        self.scene.add_cylinder(objectname, table_pose, height=cylinderHeight, radius=0.05)
+        # self.scene.add_cylinder(objectname, table_pose, height=cylinderHeight, radius=0.05)
+        self.scene.add_box(objectname, table_pose, size=(0.3,1,0.001))
         start = rospy.get_time()
         second = rospy.get_time()
         while (second - start) < self.timeout and not rospy.is_shutdown():
@@ -100,3 +101,70 @@ class Fetch_Robot():
         plan = self.group.go(wait=True)
         self.group.stop()
         self.group.clear_pose_targets()
+
+    def planto_pose(self, trans, rotation):
+        pose_goal = geometry_msgs.msg.Pose()
+        pose_goal.orientation.x = rotation[0]
+        pose_goal.orientation.y = rotation[1]
+        pose_goal.orientation.z = rotation[2]
+        pose_goal.orientation.w = rotation[3]
+        pose_goal.position.x = trans[0]
+        pose_goal.position.y = trans[1]
+        pose_goal.position.z = trans[2]
+        self.group.set_pose_target(pose_goal)
+        
+        plan = self.group.plan()
+        self.group.clear_pose_targets()
+        return plan
+
+    def execute_plan(self, plan):
+        self.group.stop()
+        self.group.execute(plan)
+        self.group.clear_pose_targets()
+
+    def planto_poses(self, poses):
+        current_endeffector = self.group.get_end_effector_link()
+        self.group.set_end_effector_link("gripper_link")
+        input = []
+        for trans, rotation in poses:
+            pose_goal = geometry_msgs.msg.Pose()
+            pose_goal.orientation.x = rotation[0]
+            pose_goal.orientation.y = rotation[1]
+            pose_goal.orientation.z = rotation[2]
+            pose_goal.orientation.w = rotation[3]
+            pose_goal.position.x = trans[0]
+            pose_goal.position.y = trans[1]
+            pose_goal.position.z = trans[2]
+            input.append(pose_goal)
+
+        self.group.set_pose_targets(input)
+            
+        plan = self.group.plan()
+        self.group.clear_pose_targets()
+        self.group.set_end_effector_link(current_endeffector)
+        return plan
+
+    # def plan_cartesian_path(self, goal, scale=1):
+
+    #     pose_goal = geometry_msgs.msg.Pose()
+    #     pose_goal.orientation.x = rx
+    #     pose_goal.orientation.y = ry
+    #     pose_goal.orientation.z = rz
+    #     pose_goal.orientation.w = rw
+    #     pose_goal.position.x = x
+    #     pose_goal.position.y = y
+    #     pose_goal.position.z = z
+    #     self.group.set_pose_target(pose_goal)
+
+    #     # Note: We are just planning, not asking move_group to actually move the robot yet:
+    #     return plan, fraction
+
+    def display_trajectory(self, plan):
+        robot = self.robot
+        display_trajectory_publisher = self.display_trajectory_publisher
+
+        display_trajectory = moveit_msgs.msg.DisplayTrajectory()
+        display_trajectory.trajectory_start = robot.get_current_state()
+        display_trajectory.trajectory.append(plan)
+        # Publish
+        display_trajectory_publisher.publish(display_trajectory)
