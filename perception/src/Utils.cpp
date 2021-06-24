@@ -172,8 +172,8 @@ bool runICP(boost::shared_ptr<pcl::PointCloud<PointT>> cloud1, boost::shared_ptr
 {
   pcl::IterativeClosestPoint<PointT, PointT> icp;
   icp.setUseReciprocalCorrespondences(true);
-  icp.setMaximumIterations(100);
-  icp.setRANSACIterations(100);
+  icp.setMaximumIterations(50);
+  icp.setRANSACIterations(30);
   icp.setInputSource(cloud1);
   icp.setInputTarget(cloud2);
   pcl::PointCloud<PointT> Final;
@@ -184,6 +184,7 @@ bool runICP(boost::shared_ptr<pcl::PointCloud<PointT>> cloud1, boost::shared_ptr
 
   return icp.hasConverged();
 }
+// template bool runICP<pcl::PointXYZ>(boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ> > cloud1, boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ> > cloud2, Eigen::Matrix4f &trans);
 
 /********************************* function: runICP *******************************************
 	*******************************************************************************************************/

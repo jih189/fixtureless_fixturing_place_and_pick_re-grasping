@@ -3,6 +3,7 @@ import rospy
 import moveit_commander
 import moveit_msgs.msg
 import geometry_msgs.msg
+import copy
 
 class Fetch_Robot():
     def __init__(self):
@@ -45,7 +46,7 @@ class Fetch_Robot():
         table_pose.pose.orientation.w = 1.0
         
         # self.scene.add_cylinder(objectname, table_pose, height=cylinderHeight, radius=0.05)
-        self.scene.add_box(objectname, table_pose, size=(0.3,1,0.001))
+        self.scene.add_box(objectname, table_pose, size=(0.3,0.3,0.001))
         start = rospy.get_time()
         second = rospy.get_time()
         while (second - start) < self.timeout and not rospy.is_shutdown():
@@ -144,20 +145,26 @@ class Fetch_Robot():
         self.group.set_end_effector_link(current_endeffector)
         return plan
 
-    # def plan_cartesian_path(self, goal, scale=1):
+    def plan_cartesian_path(self, goal_motion):
 
-    #     pose_goal = geometry_msgs.msg.Pose()
-    #     pose_goal.orientation.x = rx
-    #     pose_goal.orientation.y = ry
-    #     pose_goal.orientation.z = rz
-    #     pose_goal.orientation.w = rw
-    #     pose_goal.position.x = x
-    #     pose_goal.position.y = y
-    #     pose_goal.position.z = z
-    #     self.group.set_pose_target(pose_goal)
+        current_endeffector = self.group.get_end_effector_link()
+        self.group.set_end_effector_link("gripper_link")
 
-    #     # Note: We are just planning, not asking move_group to actually move the robot yet:
-    #     return plan, fraction
+        waypoints = []
+        wpose = self.group.get_current_pose().pose
+        wpose.position.x += goal_motion[0]
+        wpose.position.y += goal_motion[1]
+        wpose.position.z += goal_motion[2]
+
+        waypoints.append(copy.deepcopy(wpose))
+
+        (plan, fraction) = self.group.compute_cartesian_path(waypoints, 0.01, 0.0)
+
+        self.group.clear_pose_targets()
+        self.group.set_end_effector_link(current_endeffector)
+
+        return plan, fraction
+
 
     def display_trajectory(self, plan):
         robot = self.robot

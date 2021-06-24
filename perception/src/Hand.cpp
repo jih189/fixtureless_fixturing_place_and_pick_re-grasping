@@ -7,7 +7,7 @@
 using namespace Eigen;
 
 
-double objFuncPSO(const arma::vec& X, arma::vec* grad_out, optim::ArgPasser* args)//, PointCloudRGBNormal::Ptr testcloud1, PointCloudRGBNormal::Ptr testcloud2,boost::shared_ptr<visualization_msgs::MarkerArray> line_markers)
+double objFuncPSO(const arma::vec& X, arma::vec* grad_out, optim::ArgPasser* args)//, PointCloudRGBNormal::Ptr testcloud1, PointCloudRGBNormal::Ptr testcloud2)//,boost::shared_ptr<visualization_msgs::MarkerArray> line_markers)
 {
   // line_markers->markers.clear();
   const std::string name = args->name;
@@ -757,7 +757,7 @@ bool Hand::matchOneComponentPSO(std::string model_name, float min_angle, float m
   // _pso_args.sdf.registerMesh(_meshes[model_name], model_name, Eigen::Matrix4f::Identity());
 
   bool success = optim::pso(X,objFuncPSO,&_pso_args,_pso_settings);
-  // std::cout << "score: " << objFuncPSO(X, NULL, &_pso_args) << std::endl;//, test1, test2, markerarray);
+  // std::cout << "score: " << objFuncPSO(X, NULL, &_pso_args, test1, test2) << std::endl;
 
   if (!success || -_pso_args.objval<=least_match)
   {
@@ -815,8 +815,6 @@ void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
   // filter out non visible part of the handbase
   PointCloudRGBNormal::Ptr hand_in_cam(new PointCloudRGBNormal);
   pcl::transformPointCloudWithNormals(*handbase, *hand_in_cam, _handbase_in_cam);
-
-  pcl::copyPointCloud(*hand_in_cam,*test1);
 
   double inviewrate = visibleHandCloud(hand_in_cam, _visible_set);
 
@@ -922,11 +920,11 @@ void HandT42::removeSurroundingPointsAndAssignProbability(boost::shared_ptr<pcl:
         std::string name = h.first;
         if (name == "r_gripper_finger_link" || name == "l_gripper_finger_link")
         {
-          local_dist_thres = 0.01 * 0.01;
+          local_dist_thres *= 1.0;
         }
         else if (name == "gripper_link")
         {
-          local_dist_thres = 0.02 * 0.02;
+          local_dist_thres *= 4.0;
         }
 
         // extract the kdtree of current link

@@ -238,16 +238,25 @@ if __name__=='__main__':
 
             placeGripperPoses.append((transformT, rotationQ))
 
-            
-
-         print "plan to place"
          # ## find the plan to place the object
          plan = robot.planto_poses(placeGripperPoses)
          ## visualize the plan
          robot.display_trajectory(plan)
 
-         raw_input("ready to execute!!")
+         raw_input("ready to place!!")
          robot.execute_plan(plan)
+
+         objectSearcherTrigger(True)
+
+         raw_input("start to place!!")
+         plan,fraction = robot.plan_cartesian_path(goal_motion = (0,0,-0.02))
+         robot.display_trajectory(plan)
+
+         objectSearcherTrigger(False)
+
+         # raw_input("place now")
+         # robot.execute_plan(plan)
+
 
 
    # raw_input("press enter!")

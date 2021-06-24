@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   bowen_depth_sim
   tf
   tf_conversions
+  rail_manipulation_msgs
 )
 find_package(Boost REQUIRED COMPONENTS system program_options)
 find_package(PCL 1.9 REQUIRED  COMPONENTS io common visualization features registration)

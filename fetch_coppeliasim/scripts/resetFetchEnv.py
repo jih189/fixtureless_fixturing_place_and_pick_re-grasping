@@ -37,6 +37,7 @@ def moveObjectTo(cid, objectname, targetposition, targetquaternion):
     if ret == sim.simx_return_ok:
         _, position = sim.simxGetObjectPosition(clientID, objecthandle, -1, sim.simx_opmode_blocking)
         _, quaternion = sim.simxGetObjectQuaternion(clientID, objecthandle, -1, sim.simx_opmode_blocking)
+        print "object", objectname, " quaternion ", quaternion
         while not np.isclose(targetposition, position).all():
             sim.simxSetObjectPosition(clientID, objecthandle, -1, targetposition, sim.simx_opmode_oneshot)
             sim.simxSetObjectQuaternion(clientID, objecthandle, -1, targetquaternion, sim.simx_opmode_oneshot)
@@ -105,6 +106,9 @@ class Gripper:
         self.client.send_goal_and_wait(goal)
 
 def resetEnv(arm, gripper):
+    # move the robot (need to search how to do)
+    # moveObjectTo(clientID, "base_link_respondable", [-0.011241, -0.65001, 0.18444], [-9.568027599016204e-05, -0.7104805111885071, 0.003217362565919757, 0.7037094831466675])
+
     # move table away
     moveObjectTo(clientID, "Table", [-0.025, 0.825, 0.368], [0.0,0.0,0.0,0.0]) # it was [-0.025, 0.5, 0.35]
     moveObjectTo(clientID, "Cuboid0", [0.021, 0.763, 0.7775], [0.0,0.0,0.0,0.0]) # it was [0.021, 0.463, 0.7775]

@@ -21,6 +21,7 @@
 #include <boost/thread/thread.hpp>
 
 #include <icra20_manipulation_pose/SearchObject.h>
+#include <rail_manipulation_msgs/SegmentObjects.h>
 
 static const std::string TOPIC_NAME = "/head_camera/rgb/image_raw";
 static const std::string DEPTH_TOPIC_NAME = "/head_camera/depth/image_raw";
@@ -34,6 +35,24 @@ bool initFlag;
 Eigen::Matrix3f cam_info_K;
 Eigen::Matrix4f model2scene;
 bool isTracking;
+int actiontype;
+
+class Table_cloud_receiver{
+  public:
+    Table_cloud_receiver(): tablepointcloud(new PointCloud){
+      gotData = false;
+    }
+    // callback function for table detection
+    void tableCallback(const rail_manipulation_msgs::SegmentedObject::ConstPtr &table){
+      ROS_INFO("receive table data!");
+      gotData = true;
+      pcl::PCLPointCloud2 pcl_pc2;
+      pcl_conversions::toPCL(table->point_cloud, pcl_pc2);
+      pcl::fromPCLPointCloud2(pcl_pc2, *tablepointcloud);
+    }
+    PointCloud::Ptr tablepointcloud;
+    bool gotData;
+};
 
 // callback function for camera information
 void camInfoCallback(const sensor_msgs::CameraInfoConstPtr& caminfo){
@@ -89,6 +108,8 @@ void imageDepthCallback(const sensor_msgs::ImageConstPtr& msg) {
     }
 }
 
+
+// This is a thread to keep publishing the object's pose
 void publish_object_state(int* publish_rate){
 
   ros::Rate loop_rate(*publish_rate);
@@ -117,14 +138,20 @@ void publish_object_state(int* publish_rate){
   }
 }
 
+// here is the server function to receive the command
 bool searchObjectTrig(icra20_manipulation_pose::SearchObject::Request &req,
         icra20_manipulation_pose::SearchObject::Response &res){
 
   if(req.startsearch){
     isTracking = true;
+    actiontype = req.actiontype;
+    if(req.actiontype == 2 || req.actiontype == 3 || req.actiontype == 4){
+    }
   }else{
     isTracking = false;
+    actiontype = 0;
   }
+  model2scene.setIdentity();
   
   return true;
 }
@@ -136,18 +163,28 @@ int main(int argc, char **argv)
   // cv::namedWindow("view");
   // cv::namedWindow("depth_view");
 
+  // initialize all variables
   model2scene.setIdentity();
-
-  isTracking = false;
+  initFlag = false;
+  isTracking = true;
+  actiontype = 2;
+  bool istableTracked = false;
+  
+  // action type:
+  // 0: null
+  // 1: in-hand object detection and pose estimation
+  // 2: placing
+  // 3: grasping
+  // 4: fixtureless fixturing regrasping
 
   // spawn another thread
   int rate_b = 5;
   boost::thread thread_b(publish_object_state, &rate_b);
 
+  // used to measure the time cost
   ros::WallTime start_time, end_time;
 
-  initFlag = false;
-
+  // initialize the pcl
   pcl::console::setVerbosityLevel(pcl::console::L_ALWAYS);
   std::string config_dir;
   if (argc<2)
@@ -185,58 +222,88 @@ int main(int argc, char **argv)
     pcl::getMinMax3D(*model001, minPt, maxPt);
     cfg.gripper_min_dist = 0.01 * std::min(std::min(std::abs(minPt.x - maxPt.x), std::abs(minPt.y - maxPt.y)), std::abs(minPt.z - maxPt.z));
   }
-  
-  tf::TransformListener tf_listener;
 
+  // initialize tools of ros
+  // init tf listener
+  tf::TransformListener tf_listener;
+  // init image receiver
   image_transport::ImageTransport it(nh);
   image_transport::Subscriber sub_rgb = it.subscribe(TOPIC_NAME, 1,
           imageCallback);
   image_transport::Subscriber sub_depth = it.subscribe(DEPTH_TOPIC_NAME, 1,
           imageDepthCallback);
-
   ros::Subscriber caminfoSub = nh.subscribe(CAM_INFO_NAME, 10, camInfoCallback,
                     ros::TransportHints().tcpNoDelay());
+  Table_cloud_receiver table_cloud_receiver;
+  ros::Subscriber tableSub = nh.subscribe("/table_searcher/segmented_table", 1, &Table_cloud_receiver::tableCallback, &table_cloud_receiver);
 
-  ros::Publisher handbase_pub = nh.advertise<PointCloudRGBNormal> ("handbase_points", 1);
-  ros::Publisher object_only_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("object_only", 1);
-  ros::Publisher predicted_hand_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("predicted_hand", 1);
-  ros::Publisher visible_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("visible_part_of_hand", 1);
+  // init publisher for pointclouds
+  ros::Publisher handbase_pub = nh.advertise<PointCloudRGBNormal> ("handbase_points", 1); // pointcloud around the hand
+  ros::Publisher object_only_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("object_only", 1); // pointcloud without hand
+  ros::Publisher predicted_hand_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("predicted_hand", 1); // predicted hand
+  ros::Publisher visible_pointcloud_pub = nh.advertise<PointCloudRGBNormal> ("visible_part_of_hand", 1); // visible part of palm
+
+  // used for debug
+  ros::Publisher test1_pub = nh.advertise<PointCloudRGBNormal> ("test1", 1);
+  ros::Publisher test2_pub = nh.advertise<PointCloudRGBNormal> ("test2", 1);
+  ros::Publisher table_pub = nh.advertise<PointCloud> ("table_debug", 1);
+
+  // estimated pose
   ros::Publisher predicted_object_pointcloud_pub = nh.advertise<PointCloudSurfel> ("predicted_object", 1);
+  // init service server with function 'searchObjectTrig'
   ros::ServiceServer service = nh.advertiseService("searchObject", searchObjectTrig);
 
+  // init hand
   HandT42 hand(&cfg, cfg.cam_intrinsic, 640, 480);
 
   ros::Rate loop_rate(1);
+
+  // main loop
+  // all events of loop according to the action type
+  // 0. no tracking
+  //    if isTracking is set to false, then no need to run any detect and track for saving computing resource
+  // 1. in-hand detection
   while(ros::ok()){
     ros::spinOnce();
     loop_rate.sleep();
 
+    // event 0
     if(!isTracking){
       ROS_INFO("not tracking!");
       continue;
     }
-      
 
+    if(!table_cloud_receiver.gotData){
+      ROS_INFO("need table information!");
+      continue;
+    }
+    // else{
+    //   // publish the receive table info for debug
+    //   table_cloud_receiver.tablepointcloud->header.frame_id = "base_link";
+    //   table_pub.publish(table_cloud_receiver.tablepointcloud);
+    // }
+
+    // if no image in, then continue to wait
     if(scene_bgr.rows == 0 || scene_depth.rows == 0){
       std::cout << "no image in!\n";
       continue;
     }
 
+    // extract the hand pose in camera frame
     tf::StampedTransform tf_cam2gripper;
     tf_listener.waitForTransform("/head_camera_rgb_optical_frame", "/gripper_link", ros::Time(0), ros::Duration(1.0));
     tf_listener.lookupTransform("/head_camera_rgb_optical_frame", "/gripper_link", ros::Time(0), tf_cam2gripper);
     Eigen::Affine3d handbase_in_cam_in_affine3d;
     tf::transformTFToEigen(tf_cam2gripper, handbase_in_cam_in_affine3d);
 
-    // handbase in left cam
+    // handbase in cam
     Eigen::Matrix4f handbase_in_cam = handbase_in_cam_in_affine3d.cast<float>().matrix();
 
     start_time = ros::WallTime::now();
 
-    // generate the rgb depth of scene
+    // generate the pointcloud from the rgb depth of scene
     PointCloudRGBNormal::Ptr scene_rgb(new PointCloudRGBNormal);
     Utils::convert3dOrganizedRGB<pcl::PointXYZRGBNormal>(scene_depth, scene_bgr, cam_info_K, scene_rgb);
-
     Utils::calNormalIntegralImage<pcl::PointXYZRGBNormal>(scene_rgb, -1, 0.02, 10, true);
 
     // pcl filter to filter out point that is too far or too close
@@ -251,6 +318,91 @@ int main(int argc, char **argv)
     PointCloudRGBNormal::Ptr scene_organized(new PointCloudRGBNormal);
     pcl::copyPointCloud(*scene_rgb, *scene_organized);
     Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_rgb, scene_rgb, 0.001);
+
+    // filter out the pointcloud according to the event
+    // need to process on scene_organized
+    if(actiontype == 2 || actiontype == 3 || actiontype == 4){
+      // event 2,3,4 require table tracking
+      // todo! need to filter out scene_rgb
+      // 1. get the camera pose 
+      // 2. find the table in camera frame
+      // 3. use icp to track the table
+      // 
+
+      // get camera pose in base frame
+      tf::StampedTransform tf_base2cam;
+      tf_listener.waitForTransform("/base_link", "/head_camera_rgb_optical_frame", ros::Time(0), ros::Duration(1.0));
+      tf_listener.lookupTransform("/base_link", "/head_camera_rgb_optical_frame", ros::Time(0), tf_base2cam);
+      Eigen::Affine3d cam_in_base_in_affine3d;
+      tf::transformTFToEigen(tf_base2cam, cam_in_base_in_affine3d);
+
+      // cam in base
+      Eigen::Matrix4f cam_in_base = cam_in_base_in_affine3d.cast<float>().matrix();
+
+      // get the table pointcloud in camera frame
+      // need to downsample the pointcloud for icp
+      PointCloud::Ptr table_in_cam(new PointCloud);
+      pcl::transformPointCloud(*(table_cloud_receiver.tablepointcloud), *table_in_cam, cam_in_base.inverse());
+      Utils::downsamplePointCloud<pcl::PointXYZ>(table_in_cam, table_in_cam, 0.01);
+
+      PointCloud::Ptr scene_pointcloud_XYZ(new PointCloud);
+      pcl::copyPointCloud(*scene_organized, *scene_pointcloud_XYZ);
+      Utils::downsamplePointCloud<pcl::PointXYZ>(scene_pointcloud_XYZ, scene_pointcloud_XYZ, 0.01);
+
+      pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
+      icp.setInputSource(table_in_cam);
+      icp.setInputTarget(scene_pointcloud_XYZ);
+      icp.setMaxCorrespondenceDistance(0.05);
+      icp.setMaximumIterations(15);
+
+      PointCloud Final;
+      icp.align(Final);
+      Eigen::Matrix4f table_offset = icp.getFinalTransformation();
+
+      if(icp.hasConverged()){
+        istableTracked = true;
+        ROS_INFO("table is tracked!");
+      }else{
+        table_offset.setIdentity();
+        istableTracked = false;
+      }
+
+      pcl::transformPointCloud(*table_in_cam, *table_in_cam, table_offset);
+
+      table_in_cam->header.frame_id = "/head_camera_rgb_optical_frame";
+      table_in_cam->header.stamp = ros::Time::now().toNSec()/1e3;
+      table_pub.publish(table_in_cam);
+
+      pcl::ExtractIndices<pcl::PointXYZRGBNormal> extract;
+      pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
+      #pragma omp parallel
+      {
+        // remove the table point cloud from scene_rgb
+        pcl::KdTreeFLANN<pcl::PointXYZ> table_kdtree;
+        table_kdtree.setInputCloud(table_in_cam);
+
+        #pragma omp for schedule(dynamic)
+        for(int i = 0; i < scene_rgb->size(); i++){
+          pcl::PointXYZ pt(scene_rgb->points[i].x, scene_rgb->points[i].y, scene_rgb->points[i].z);
+
+          std::vector<int> pointIdxNKNSearch(1);
+          std::vector<float> pointNKNSquaredDistance(1);
+          if (table_kdtree.nearestKSearch(pt, 1, pointIdxNKNSearch, pointNKNSquaredDistance) > 0)
+          {
+            if (pointNKNSquaredDistance[0] <= 0.0001)
+            {
+              #pragma omp critical
+              inliers->indices.push_back(i);
+            }
+          }
+        }
+      }
+      extract.setInputCloud(scene_rgb);
+      extract.setIndices(inliers);
+      extract.setNegative(true);
+      extract.filter(*scene_rgb);
+
+    }
 
     // filter out point not in the hand link bounding
     Eigen::Matrix4f cam_in_handbase = handbase_in_cam.inverse();
@@ -272,19 +424,17 @@ int main(int argc, char **argv)
       pass.setFilterFieldName("y");
       pass.setFilterLimits(-0.07, 0.07);
       pass.filter(*scene_rgb);
-
     }
 
     pcl::transformPointCloudWithNormals(*scene_rgb, *scene_rgb, cam_in_handbase.inverse());
 
+
     // // publish the pointcloud of hand
-    // scene_rgb->header.frame_id = "/head_camera_rgb_optical_frame";
-    // handbase_pub.publish(scene_rgb);
+    scene_rgb->header.frame_id = "/head_camera_rgb_optical_frame";
+    handbase_pub.publish(scene_rgb);
 
     // scene_rgb is in camera base, search the hand base and track it
     hand.setCurScene(scene_depth, scene_organized, scene_rgb, handbase_in_cam);
-    hand.test1->header.frame_id = "/head_camera_rgb_optical_frame";
-    handbase_pub.publish(hand.test1);
 
     // if the hand is not in camera view, then continue
     if(! hand.in_cam){
@@ -314,7 +464,8 @@ int main(int argc, char **argv)
     
     PointCloudRGBNormal::Ptr predicted_hand(new PointCloudRGBNormal);
     pcl::transformPointCloudWithNormals(*(hand._hand_cloud), *predicted_hand, hand._handbase_in_cam);
-    
+
+    /*
     // extract the point cloud being to the object
     PointCloudSurfel::Ptr object1(new PointCloudSurfel);
     PointCloudSurfel::Ptr tmp_scene(new PointCloudSurfel);
@@ -390,18 +541,25 @@ int main(int argc, char **argv)
       object1->header.frame_id = "/head_camera_rgb_optical_frame";
       object_only_pointcloud_pub.publish(object1);
     }
+    */
     end_time = ros::WallTime::now();
 
     ROS_INFO_STREAM("Exec time(ms): " << (end_time - start_time).toNSec()*1e-6);
-    
+
     predicted_hand->header.frame_id = "/head_camera_rgb_optical_frame";
     predicted_hand_pointcloud_pub.publish(predicted_hand);
 
     hand._visible_set->header.frame_id = "/gripper_link";
     visible_pointcloud_pub.publish(hand._visible_set);
 
+    // hand.test1->header.frame_id = "/gripper_link";
+    // test1_pub.publish(hand.test1);
+
+    // hand.test2->header.frame_id = "/gripper_link";
+    // test2_pub.publish(hand.test2);
+
     hand.reset();
-    est.reset();
+    // est.reset();
 
     // cv::imshow("view", scene_bgr);
     // cv::imshow("depth_view", scene_depth);

@@ -116,7 +116,7 @@ lcp:
 pose_estimator_wrong_ratio: 1
 render_roi_weight: 2.0
 render_keep_hypo: 0.3
-near_hand_dist: 0.001
+near_hand_dist: 0.005
 pose_estimator_use_physics: true
 pose_estimator_high_confidence_thres: 0.8
 icp_dist_thres: 0.01
