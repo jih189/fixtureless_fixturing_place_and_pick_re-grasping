@@ -34,6 +34,9 @@ cv::Mat scene_depth;
 bool initFlag;
 Eigen::Matrix3f cam_info_K;
 Eigen::Matrix4f model2scene;
+Eigen::Matrix4f predicted_hand_pose;
+Eigen::Matrix4f predicted_table_pose;
+Eigen::Matrix4f original_table_pose;
 bool isTracking;
 int actiontype;
 
@@ -41,6 +44,13 @@ class Table_cloud_receiver{
   public:
     Table_cloud_receiver(): tablepointcloud(new PointCloud){
       gotData = false;
+      centroidx = 0.0;
+      centroidy = 0.0;
+      centroidz = 0.0;
+      orientationx = 0.0;
+      orientationy = 0.0;
+      orientationz = 0.0;
+      orientationw = 0.0;
     }
     // callback function for table detection
     void tableCallback(const rail_manipulation_msgs::SegmentedObject::ConstPtr &table){
@@ -49,8 +59,18 @@ class Table_cloud_receiver{
       pcl::PCLPointCloud2 pcl_pc2;
       pcl_conversions::toPCL(table->point_cloud, pcl_pc2);
       pcl::fromPCLPointCloud2(pcl_pc2, *tablepointcloud);
+
+      centroidx = table->centroid.x;
+      centroidy = table->centroid.y;
+      centroidz = table->centroid.z;
+      orientationx = table->orientation.x;
+      orientationy = table->orientation.y;
+      orientationz = table->orientation.z;
+      orientationw = table->orientation.w;
     }
     PointCloud::Ptr tablepointcloud;
+    float centroidx, centroidy, centroidz;
+    float orientationx, orientationy, orientationz, orientationw; 
     bool gotData;
 };
 
@@ -116,9 +136,12 @@ void publish_object_state(int* publish_rate){
 
   tf::TransformBroadcaster object_pose_transform_broad_caster;
   tf::Transform object_pose_transform;
+  tf::Transform hand_pose_transform;
+  tf::Transform table_pose_transform;
+  tf::Transform original_table_pose_transform;
   
   while(ros::ok()){
-
+    loop_rate.sleep();
     if(model2scene.isIdentity() || !isTracking){
       continue;
     }
@@ -134,7 +157,41 @@ void publish_object_state(int* publish_rate){
     object_pose_transform.setRotation(tf_quat);
     object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "/object"));
 
-    loop_rate.sleep();
+    if(actiontype == 2 || actiontype == 3 || actiontype == 4){ // todo
+      if(!predicted_hand_pose.isIdentity() && !predicted_table_pose.isIdentity()){
+        Eigen::Quaterniond hand_quat(predicted_hand_pose.block<3,3>(0,0).cast<double>());
+        Eigen::Vector3d hand_trans(predicted_hand_pose.block<3,1>(0,3).cast<double>());
+
+        tf::quaternionEigenToTF(hand_quat, tf_quat);
+        tf::vectorEigenToTF(hand_trans, tf_trans);
+
+        hand_pose_transform.setOrigin(tf_trans);
+        hand_pose_transform.setRotation(tf_quat);
+        object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(hand_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "/predicted_hand"));
+
+        Eigen::Quaterniond table_quat(predicted_table_pose.block<3,3>(0,0).cast<double>());
+        Eigen::Vector3d table_trans(predicted_table_pose.block<3,1>(0,3).cast<double>());
+
+        tf::quaternionEigenToTF(table_quat, tf_quat);
+        tf::vectorEigenToTF(table_trans, tf_trans);
+
+        table_pose_transform.setOrigin(tf_trans);
+        table_pose_transform.setRotation(tf_quat);
+        object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(table_pose_transform, ros::Time::now(), "/base_link", "/predicted_table"));
+      
+        // publish original table's pose
+        Eigen::Quaterniond original_table_quat(original_table_pose.block<3,3>(0,0).cast<double>());
+        Eigen::Vector3d original_table_trans(original_table_pose.block<3,1>(0,3).cast<double>());
+
+        tf::quaternionEigenToTF(original_table_quat, tf_quat);
+        tf::vectorEigenToTF(original_table_trans, tf_trans);
+
+        original_table_pose_transform.setOrigin(tf_trans);
+        original_table_pose_transform.setRotation(tf_quat);
+        object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(original_table_pose_transform, ros::Time::now(), "/base_link", "/original_table"));
+
+      }
+    }
   }
 }
 
@@ -146,6 +203,8 @@ bool searchObjectTrig(icra20_manipulation_pose::SearchObject::Request &req,
     isTracking = true;
     actiontype = req.actiontype;
     if(req.actiontype == 2 || req.actiontype == 3 || req.actiontype == 4){
+      predicted_hand_pose.setIdentity();
+      predicted_table_pose.setIdentity();
     }
   }else{
     isTracking = false;
@@ -165,10 +224,14 @@ int main(int argc, char **argv)
 
   // initialize all variables
   model2scene.setIdentity();
+  predicted_hand_pose.setIdentity();
+  predicted_table_pose.setIdentity();
   initFlag = false;
-  isTracking = true;
-  actiontype = 2;
+  isTracking = false;
+  actiontype = 0;
   bool istableTracked = false;
+  Eigen::Matrix4f table_offset;
+  table_offset.setIdentity();
   
   // action type:
   // 0: null
@@ -277,11 +340,6 @@ int main(int argc, char **argv)
       ROS_INFO("need table information!");
       continue;
     }
-    // else{
-    //   // publish the receive table info for debug
-    //   table_cloud_receiver.tablepointcloud->header.frame_id = "base_link";
-    //   table_pub.publish(table_cloud_receiver.tablepointcloud);
-    // }
 
     // if no image in, then continue to wait
     if(scene_bgr.rows == 0 || scene_depth.rows == 0){
@@ -319,11 +377,34 @@ int main(int argc, char **argv)
     pcl::copyPointCloud(*scene_rgb, *scene_organized);
     Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_rgb, scene_rgb, 0.001);
 
+    // filter out point not in the hand link bounding
+    Eigen::Matrix4f cam_in_handbase = handbase_in_cam.inverse();
+    pcl::transformPointCloudWithNormals(*scene_rgb, *scene_rgb, cam_in_handbase);
+
+    {
+      pcl::PassThrough<pcl::PointXYZRGBNormal> pass;
+      pass.setInputCloud(scene_rgb);
+      pass.setFilterFieldName("z");
+      pass.setFilterLimits(-0.08, 0.08);
+      pass.filter(*scene_rgb);
+
+      pass.setInputCloud(scene_rgb);
+      pass.setFilterFieldName("x");
+      pass.setFilterLimits(-0.15, 0.08);
+      pass.filter(*scene_rgb);
+
+      pass.setInputCloud(scene_rgb);
+      pass.setFilterFieldName("y");
+      pass.setFilterLimits(-0.07, 0.07);
+      pass.filter(*scene_rgb);
+    }
+
+    pcl::transformPointCloudWithNormals(*scene_rgb, *scene_rgb, cam_in_handbase.inverse());
+
     // filter out the pointcloud according to the event
     // need to process on scene_organized
     if(actiontype == 2 || actiontype == 3 || actiontype == 4){
       // event 2,3,4 require table tracking
-      // todo! need to filter out scene_rgb
       // 1. get the camera pose 
       // 2. find the table in camera frame
       // 3. use icp to track the table
@@ -357,7 +438,7 @@ int main(int argc, char **argv)
 
       PointCloud Final;
       icp.align(Final);
-      Eigen::Matrix4f table_offset = icp.getFinalTransformation();
+      table_offset = icp.getFinalTransformation();
 
       if(icp.hasConverged()){
         istableTracked = true;
@@ -404,31 +485,6 @@ int main(int argc, char **argv)
 
     }
 
-    // filter out point not in the hand link bounding
-    Eigen::Matrix4f cam_in_handbase = handbase_in_cam.inverse();
-    pcl::transformPointCloudWithNormals(*scene_rgb, *scene_rgb, cam_in_handbase);
-
-    {
-      pcl::PassThrough<pcl::PointXYZRGBNormal> pass;
-      pass.setInputCloud(scene_rgb);
-      pass.setFilterFieldName("z");
-      pass.setFilterLimits(-0.08, 0.08);
-      pass.filter(*scene_rgb);
-
-      pass.setInputCloud(scene_rgb);
-      pass.setFilterFieldName("x");
-      pass.setFilterLimits(-0.15, 0.08);
-      pass.filter(*scene_rgb);
-
-      pass.setInputCloud(scene_rgb);
-      pass.setFilterFieldName("y");
-      pass.setFilterLimits(-0.07, 0.07);
-      pass.filter(*scene_rgb);
-    }
-
-    pcl::transformPointCloudWithNormals(*scene_rgb, *scene_rgb, cam_in_handbase.inverse());
-
-
     // // publish the pointcloud of hand
     scene_rgb->header.frame_id = "/head_camera_rgb_optical_frame";
     handbase_pub.publish(scene_rgb);
@@ -440,7 +496,6 @@ int main(int argc, char **argv)
     if(! hand.in_cam){
       // reset the hand and estimator      
       hand.reset();
-      // est.reset();
       continue;
     }
 
@@ -465,7 +520,7 @@ int main(int argc, char **argv)
     PointCloudRGBNormal::Ptr predicted_hand(new PointCloudRGBNormal);
     pcl::transformPointCloudWithNormals(*(hand._hand_cloud), *predicted_hand, hand._handbase_in_cam);
 
-    /*
+    
     // extract the point cloud being to the object
     PointCloudSurfel::Ptr object1(new PointCloudSurfel);
     PointCloudSurfel::Ptr tmp_scene(new PointCloudSurfel);
@@ -532,16 +587,36 @@ int main(int argc, char **argv)
       // std::cout << "best tf:\n"
       //           << model2scene << "\n\n";
 
+      // publish the predicted object pointcloud in camera frame
       PointCloudSurfel::Ptr predicted_model(new PointCloudSurfel);
       pcl::transformPointCloud(*model, *predicted_model, model2scene);
       predicted_model->header.frame_id = "/head_camera_rgb_optical_frame";
       predicted_object_pointcloud_pub.publish(predicted_model);
 
-      // publish the pointcloud belong to the object
+      // publish the pointcloud does not belong to the hand in camera frame
       object1->header.frame_id = "/head_camera_rgb_optical_frame";
       object_only_pointcloud_pub.publish(object1);
+
+      if(actiontype == 2 || actiontype == 3 || actiontype == 4){
+        // update the predicted hand and table poses
+        Eigen::Matrix3f R = Eigen::Quaternionf(table_cloud_receiver.orientationw, table_cloud_receiver.orientationx, table_cloud_receiver.orientationy, table_cloud_receiver.orientationz).toRotationMatrix();
+        predicted_table_pose.block<3,3>(0,0) = R;
+
+        predicted_table_pose(0,3) = table_cloud_receiver.centroidx;
+        predicted_table_pose(1,3) = table_cloud_receiver.centroidy;
+        predicted_table_pose(2,3) = table_cloud_receiver.centroidz;
+
+        original_table_pose = predicted_table_pose;
+
+        std::cout << "table offset" << std::endl;
+        std::cout << table_offset << std::endl;
+
+        predicted_table_pose = predicted_table_pose * table_offset.inverse();
+
+        predicted_hand_pose = hand._handbase_in_cam;
+      }
     }
-    */
+    
     end_time = ros::WallTime::now();
 
     ROS_INFO_STREAM("Exec time(ms): " << (end_time - start_time).toNSec()*1e-6);
@@ -559,7 +634,7 @@ int main(int argc, char **argv)
     // test2_pub.publish(hand.test2);
 
     hand.reset();
-    // est.reset();
+    est.reset();
 
     // cv::imshow("view", scene_bgr);
     // cv::imshow("depth_view", scene_depth);

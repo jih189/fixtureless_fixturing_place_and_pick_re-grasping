@@ -614,10 +614,12 @@ void Hand::makeHandCloud()
     PointCloudRGBNormal::Ptr tmp(new PointCloudRGBNormal);
     pcl::transformPointCloudWithNormals(*component_cloud, *tmp, model2handbase);
 
-    
     component_status_info += (name + (_component_status[name] ? ": good | ": ": bad | "));
     if(_component_status[name])
       (*_hand_cloud) += (*tmp);
+    else if((name == "r_gripper_finger_link" && _component_status["l_gripper_finger_link"]) || (name == "l_gripper_finger_link" && _component_status["r_gripper_finger_link"])){
+      (*_hand_cloud) += (*tmp);
+    }
     else
       continue;
 
@@ -767,7 +769,13 @@ bool Hand::matchOneComponentPSO(std::string model_name, float min_angle, float m
     }else{
       std::cout << std::endl;
     }
+
     _tf_self[model_name].setIdentity();
+    // if another finger is found, then we can estimate the finger position from that.
+    if(_component_status[pair_name] == true){
+      _tf_self[model_name](1,3) = -_tf_self[pair_name](1,3);
+    }
+
     _component_status[model_name]=false;
     return false;
   }

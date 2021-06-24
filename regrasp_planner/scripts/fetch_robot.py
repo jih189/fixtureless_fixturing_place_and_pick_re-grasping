@@ -31,7 +31,7 @@ class Fetch_Robot():
 
         self.timeout = 4.0
 
-    def addCollisionObject(self, objectname, x, y, z):
+    def addCollisionTable(self, objectname, x, y, z, rx, ry, rz, rw, width, depth, height):
         
         table_pose = geometry_msgs.msg.PoseStamped()
         cylinderHeight = 0.001
@@ -40,13 +40,13 @@ class Fetch_Robot():
         table_pose.pose.position.y = y
         table_pose.pose.position.z = z + cylinderHeight/2.0
 
-        table_pose.pose.orientation.x = 0.0
-        table_pose.pose.orientation.y = 0.0
-        table_pose.pose.orientation.z = 0.0
-        table_pose.pose.orientation.w = 1.0
+        table_pose.pose.orientation.x = rx
+        table_pose.pose.orientation.y = ry
+        table_pose.pose.orientation.z = rz
+        table_pose.pose.orientation.w = rw
         
         # self.scene.add_cylinder(objectname, table_pose, height=cylinderHeight, radius=0.05)
-        self.scene.add_box(objectname, table_pose, size=(0.3,0.3,0.001))
+        self.scene.add_box(objectname, table_pose, size=(width,depth,height))
         start = rospy.get_time()
         second = rospy.get_time()
         while (second - start) < self.timeout and not rospy.is_shutdown():

@@ -34,6 +34,7 @@ from regrasp_planner import RegripPlanner
 import rospy
 
 from std_srvs.srv import Empty
+from geometry_msgs.msg import Point
 from rail_segmentation.srv import SearchTable
 from icra20_manipulation_pose.srv import SearchObject
 
@@ -99,9 +100,9 @@ if __name__=='__main__':
    rospy.init_node('main_node')
 
    listener = tf.TransformListener()
-   # br = tf.TransformBroadcaster()
+   br = tf.TransformBroadcaster()
    
-   marker_pub = rospy.Publisher("/manipulate_pos", Marker, queue_size=1)
+   # marker_pub = rospy.Publisher("/manipulate_pos", Marker, queue_size=1)
    goal_pub1 = rospy.Publisher("/goal_object1", Marker, queue_size=1)
    goal_pub2 = rospy.Publisher("/goal_object2", Marker, queue_size=1)
    goal_pub3 = rospy.Publisher("/goal_object3", Marker, queue_size=1)
@@ -122,7 +123,6 @@ if __name__=='__main__':
    planner.generateGraph()
    # # planner.showgraph()
 
-   heightresult = 0.0
    # manipulation area selection, given the pointcloud to generate the position to manipulate
    rospy.wait_for_service('searchObject')
    objectSearcherTrigger = rospy.ServiceProxy('searchObject', SearchObject)
@@ -131,29 +131,25 @@ if __name__=='__main__':
    tableSearcher = rospy.ServiceProxy('table_searcher/search_table', SearchTable)
 
    try:
-      heightresult = tableSearcher()
-      print "table height = ", heightresult.tableHeight
-      # heightresult.tableHeight = 0.73102
+      tableresult = tableSearcher()
    except rospy.ServiceException as exc:
       print("Service did not process request: " + str(exc))
-
-   # manipulationposx = 0.61644
-   manipulationposx = 0.69
-   manipulationposy = 0.049959
 
    ## move the end-effector into robot's camera view
    robot = Fetch_Robot()
 
    ## show the manipulation position in rviz
-   marker = showManipulationPos(manipulationposx, manipulationposy, heightresult.tableHeight)
-   marker_pub.publish(marker)
+   # marker = showManipulationPos(tableresult.centroid.x, tableresult.centroid.y, tableresult.centroid.z)
+   # marker_pub.publish(marker)
    # add the table as a collision object into the world
-   robot.addCollisionObject("table", manipulationposx, manipulationposy, heightresult.tableHeight)
+   robot.addCollisionTable("table", tableresult.centroid.x, tableresult.centroid.y, tableresult.centroid.z, \
+         tableresult.orientation.x, tableresult.orientation.y, tableresult.orientation.z, tableresult.orientation.w, \
+         tableresult.width, tableresult.depth, tableresult.height)
 
    robot.goto_pose(0.34969, 0.20337, 0.92054, 0.081339, 0.012991, -0.63111, 0.77131)
 
    ## launch the tracker
-   objectSearcherTrigger(True)
+   objectSearcherTrigger(True, 1)
 
    foundObject = True
    hand_grasp_pose = None
@@ -179,12 +175,12 @@ if __name__=='__main__':
       (trans,rot) = listener.lookupTransform('/gripper_link', '/r_gripper_finger_link', rospy.Time())
       starthandwidth = trans[1] * 1000
 
-   except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+   except:
       print "fail to detect the object"
       foundObject = False
 
    ## stop the tracker
-   objectSearcherTrigger(False)
+   objectSearcherTrigger(False, 0)
 
    ## set goal grasp pose in object frame
    goalpose = Mat4(1.0,0.0,0.0,0.0,0.0,0.0,-1.0,0.0,0.0,1.0,0.0,0.0,53.3199386597,-8.46575927734,-4.76837158203e-07,1.0)
@@ -195,6 +191,7 @@ if __name__=='__main__':
 
    placeGripperPoses = []
    showRotate = []
+   
    if foundObject:
       planner.addStartGrasp(starthandwidth, startpose)
       # planner.showgraph()
@@ -209,10 +206,14 @@ if __name__=='__main__':
          plan1 = placementsequence[0]
          placements = planner.getPlacements(plan1)
 
-         tablepos = np.identity(4)
-         tablepos[0][3] = manipulationposx
-         tablepos[1][3] = manipulationposy
-         tablepos[2][3] = heightresult.tableHeight + 0.02
+         # tablepos = np.identity(4)
+         quaternion_array = (tableresult.orientation.x,tableresult.orientation.y,tableresult.orientation.z,tableresult.orientation.w)
+         tablepos = np.matrix(tf.transformations.quaternion_matrix(quaternion_array))
+         # print "check"
+         # print tablepos
+         tablepos[0,3] = tableresult.centroid.x
+         tablepos[1,3] = tableresult.centroid.y
+         tablepos[2,3] = tableresult.centroid.z + 0.02
 
          for ri, tableangle in enumerate([0.0, 0.7853975, 1.570795, 2.3561925, 3.14159, 3.9269875, 4.712385, 5.4977825]):
             # for tableangle in [0.0]:
@@ -226,7 +227,7 @@ if __name__=='__main__':
             ## calculate the object pose on table
             objectP = np.dot(afterRotate, placements[0])
             rotationQ = tf.transformations.quaternion_from_matrix(objectP)
-            transformT = objectP[:3,3]
+            transformT = np.squeeze(np.asarray(objectP[:3,3]))
 
             object_goal_place = showPlacePos(rotationQ, transformT)
             showRotate.append(object_goal_place)
@@ -234,25 +235,26 @@ if __name__=='__main__':
             ## calculate the gripper pose on table
             gripperP = np.dot(objectP, hand_grasp_pose)
             rotationQ = tf.transformations.quaternion_from_matrix(gripperP)
-            transformT = gripperP[:3,3]
+            transformT = np.squeeze(np.asarray(gripperP[:3,3]))
 
             placeGripperPoses.append((transformT, rotationQ))
 
          # ## find the plan to place the object
          plan = robot.planto_poses(placeGripperPoses)
-         ## visualize the plan
+         # # visualize the plan
          robot.display_trajectory(plan)
 
          raw_input("ready to place!!")
          robot.execute_plan(plan)
 
-         objectSearcherTrigger(True)
+         objectSearcherTrigger(True, 2)
 
          raw_input("start to place!!")
-         plan,fraction = robot.plan_cartesian_path(goal_motion = (0,0,-0.02))
-         robot.display_trajectory(plan)
+         ## need to switch to cartesian controller
+         # plan,fraction = robot.plan_cartesian_path(goal_motion = (0,0,-0.02))
+         # robot.display_trajectory(plan)
 
-         objectSearcherTrigger(False)
+         objectSearcherTrigger(False, 0)
 
          # raw_input("place now")
          # robot.execute_plan(plan)
@@ -268,30 +270,32 @@ if __name__=='__main__':
       # for i, v in enumerate(placeGripperPoses):
       #    transformT, rotationQ = v
       #    br.sendTransform(transformT, rotationQ, rospy.Time.now(), str(i), "base_link")
+      # br.sendTransform((tableresult.centroid.x, tableresult.centroid.y, tableresult.centroid.z), (tableresult.orientation.x, tableresult.orientation.y, tableresult.orientation.z, tableresult.orientation.w), rospy.Time.now(), "place", "base_link")
 
-      if showRotate[0] != None:
-         goal_pub1.publish(showRotate[0])
+      if len(showRotate) > 0:
+         if showRotate[0] != None:
+            goal_pub1.publish(showRotate[0])
 
-      if showRotate[1] != None:
-         goal_pub2.publish(showRotate[1])
+         if showRotate[1] != None:
+            goal_pub2.publish(showRotate[1])
 
-      if showRotate[2] != None:
-         goal_pub3.publish(showRotate[2])
+         if showRotate[2] != None:
+            goal_pub3.publish(showRotate[2])
 
-      if showRotate[3] != None:
-         goal_pub4.publish(showRotate[3])
+         if showRotate[3] != None:
+            goal_pub4.publish(showRotate[3])
 
-      if showRotate[4] != None:
-         goal_pub5.publish(showRotate[4])
+         if showRotate[4] != None:
+            goal_pub5.publish(showRotate[4])
 
-      if showRotate[5] != None:
-         goal_pub6.publish(showRotate[5])
+         if showRotate[5] != None:
+            goal_pub6.publish(showRotate[5])
 
-      if showRotate[6] != None:
-         goal_pub7.publish(showRotate[6])
+         if showRotate[6] != None:
+            goal_pub7.publish(showRotate[6])
 
-      if showRotate[7] != None:
-         goal_pub8.publish(showRotate[7])
+         if showRotate[7] != None:
+            goal_pub8.publish(showRotate[7])
 
       # (trans,rot) = listener.lookupTransform('/object', '/gripper_link', rospy.Time())
       # hand_grasp_pose = tf.TransformerROS().fromTranslationRotation(trans, rot)
