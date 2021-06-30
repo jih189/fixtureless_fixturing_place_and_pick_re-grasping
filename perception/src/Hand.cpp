@@ -588,7 +588,7 @@ void Hand::getTFHandBase(std::string cur_name, Eigen::Matrix4f &tf_in_handbase)
 
 void Hand::addComponent(std::string name, std::string parent_name, PointCloudRGBNormal::Ptr cloud, pcl::PolygonMesh::Ptr mesh, pcl::PolygonMesh::Ptr convex_mesh, const Matrix4f &tf_in_parent, const Matrix4f &tf_self)
 {
-  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(cloud, cloud, 0.004);
+  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(cloud, cloud, 0.006);
 
   _clouds[name] = cloud;
   _meshes[name] = mesh;
@@ -603,7 +603,7 @@ void Hand::addComponent(std::string name, std::string parent_name, PointCloudRGB
 void Hand::makeHandCloud()
 {
   _hand_cloud->clear();
-  std::string component_status_info = "";
+  // std::string component_status_info = "";
   for (auto h:_clouds)
   {
     std::string name = h.first;
@@ -614,7 +614,7 @@ void Hand::makeHandCloud()
     PointCloudRGBNormal::Ptr tmp(new PointCloudRGBNormal);
     pcl::transformPointCloudWithNormals(*component_cloud, *tmp, model2handbase);
 
-    component_status_info += (name + (_component_status[name] ? ": good | ": ": bad | "));
+    // component_status_info += (name + (_component_status[name] ? ": good | ": ": bad | "));
     if(_component_status[name])
       (*_hand_cloud) += (*tmp);
     else if((name == "r_gripper_finger_link" && _component_status["l_gripper_finger_link"]) || (name == "l_gripper_finger_link" && _component_status["r_gripper_finger_link"])){
@@ -628,7 +628,7 @@ void Hand::makeHandCloud()
     kdtree->setInputCloud(tmp);
     _kdtrees[name] = kdtree;
   }
-  ROS_INFO_STREAM("tracking status: " << component_status_info);
+  // ROS_INFO_STREAM("tracking status: " << component_status_info);
 }
 
 //For visualization
@@ -783,7 +783,7 @@ bool Hand::matchOneComponentPSO(std::string model_name, float min_angle, float m
   _tf_self[model_name].setIdentity();
   _tf_self[model_name](1,3) = angle;
   _component_status[model_name]=true;
-  ROS_INFO("%s PSO final angle=%f, match_score=%f", model_name.c_str(), angle, -_pso_args.objval);
+  // ROS_INFO("%s PSO final angle=%f, match_score=%f", model_name.c_str(), angle, -_pso_args.objval);
   return true;
 }
 
@@ -793,7 +793,7 @@ bool Hand::matchOneComponentPSO(std::string model_name, float min_angle, float m
 void Hand::handbaseICP(PointCloudRGBNormal::Ptr scene_organized)
 {
   PointCloudRGBNormal::Ptr scene_sampled(new PointCloudRGBNormal);
-  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_organized, scene_sampled, 0.004);
+  Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_organized, scene_sampled, 0.008);
 
   PointCloudRGBNormal::Ptr handbase(new PointCloudRGBNormal);
   pcl::copyPointCloud(*_clouds["gripper_link"],*handbase); // need to filter out point is not showing in the view!!!

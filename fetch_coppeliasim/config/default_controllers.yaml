@@ -55,6 +55,45 @@ gripper_controller:
     - r_gripper_finger_joint
     
 #- l_gripper_finger_joint
+ 
+my_cartesian_motion_controller:
+  type: "position_controllers/CartesianMotionController"
+  end_effector_link: "gripper_link"
+  robot_base_link: "torso_lift_link"
+  target_frame_topic: "target_frame"
+  joints:
+    - shoulder_pan_joint
+    - shoulder_lift_joint
+    - upperarm_roll_joint
+    - elbow_flex_joint
+    - forearm_roll_joint
+    - wrist_flex_joint
+    - wrist_roll_joint
+
+  pd_gains:
+      trans_x: {p: 5000.0}
+      trans_y: {p: 5000.0}
+      trans_z: {p: 5000.0}
+      rot_x: {p: 1000.0}
+      rot_y: {p: 1000.0}
+      rot_z: {p: 1000.0}
+
+my_motion_control_handle:
+   type: "cartesian_controllers/MotionControlHandle"
+   end_effector_link: "gripper_link"
+   robot_base_link: "torso_lift_link"
+   target_frame_topic: "/my_cartesian_motion_controller/target_frame"
+   joints:
+    - shoulder_pan_joint
+    - shoulder_lift_joint
+    - upperarm_roll_joint
+    - elbow_flex_joint
+    - forearm_roll_joint
+    - wrist_flex_joint
+    - wrist_roll_joint
+
+# cartesian_wrist_controller:
+#   type: "robot_controllers/CartesianTwistController"
 
 
 # gripper_controller:
@@ -65,3 +104,7 @@ gripper_controller:
 #  max_effort: 100
 #  stall_velocity_threshold: 0.001
 #  stall_timeout: 1.0
+
+# parallel_gripper_controller:
+#   type: "robot_controllers/ParallelGripperController"
+#   joint:

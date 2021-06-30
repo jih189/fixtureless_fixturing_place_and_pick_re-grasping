@@ -61,8 +61,9 @@ class Arm:
         goal = FollowJointTrajectoryGoal()
         goal.trajectory.joint_names = self.joint_names
         point = JointTrajectoryPoint()
+        # point.velocities.append(0.1)
         point.positions = self.init_position
-        point.time_from_start = rospy.Duration(1)
+        point.time_from_start = rospy.Duration(5)
         goal.trajectory.points.append(point)
         self.client.send_goal_and_wait(goal)
 

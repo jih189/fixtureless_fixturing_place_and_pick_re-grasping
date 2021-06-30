@@ -230,7 +230,7 @@ int main(int argc, char **argv)
       est.setCurScene(scene_003, cloud_withouthand_raw, object_segment, rgb_image, depth_meters);
       est.registerHandMesh(&hand);
       est.registerMesh(cfg.object_mesh_path, "object", Eigen::Matrix4f::Identity());
-      bool succeed = est.runSuper4pcs(ppfs);
+      bool succeed = est.runSuper4pcs(ppfs, Eigen::Matrix4f::Identity());
       assert(succeed);
       est.clusterPoses(30, 0.015, true);
       est.refineByICP();

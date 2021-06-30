@@ -23,6 +23,7 @@
 #include <icra20_manipulation_pose/SearchObject.h>
 #include <rail_manipulation_msgs/SegmentObjects.h>
 
+
 static const std::string TOPIC_NAME = "/head_camera/rgb/image_raw";
 static const std::string DEPTH_TOPIC_NAME = "/head_camera/depth/image_raw";
 static const std::string CAM_INFO_NAME = "/head_camera/depth/camera_info";
@@ -33,12 +34,15 @@ cv::Mat scene_bgr;
 cv::Mat scene_depth;
 bool initFlag;
 Eigen::Matrix3f cam_info_K;
-Eigen::Matrix4f model2scene;
+
+Eigen::Matrix4f model2hand;
 Eigen::Matrix4f predicted_hand_pose;
 Eigen::Matrix4f predicted_table_pose;
 Eigen::Matrix4f original_table_pose;
+Eigen::Matrix4f predicted_pose_in_hand;
 bool isTracking;
 int actiontype;
+unsigned int trackstamp;
 
 class Table_cloud_receiver{
   public:
@@ -132,6 +136,8 @@ void imageDepthCallback(const sensor_msgs::ImageConstPtr& msg) {
 // This is a thread to keep publishing the object's pose
 void publish_object_state(int* publish_rate){
 
+  ros::NodeHandle n;
+  
   ros::Rate loop_rate(*publish_rate);
 
   tf::TransformBroadcaster object_pose_transform_broad_caster;
@@ -139,14 +145,16 @@ void publish_object_state(int* publish_rate){
   tf::Transform hand_pose_transform;
   tf::Transform table_pose_transform;
   tf::Transform original_table_pose_transform;
+
+  ros::Publisher trackstamp_pub = n.advertise<std_msgs::UInt16>("trackstamp", 10);
   
   while(ros::ok()){
     loop_rate.sleep();
-    if(model2scene.isIdentity() || !isTracking){
+    if(model2hand.isIdentity() || !isTracking){
       continue;
     }
-    Eigen::Quaterniond eigen_quat(model2scene.block<3,3>(0,0).cast<double>());
-    Eigen::Vector3d eigen_trans(model2scene.block<3,1>(0,3).cast<double>());
+    Eigen::Quaterniond eigen_quat(model2hand.block<3,3>(0,0).cast<double>());
+    Eigen::Vector3d eigen_trans(model2hand.block<3,1>(0,3).cast<double>());
 
     tf::Quaternion tf_quat;
     tf::Vector3 tf_trans;
@@ -155,9 +163,9 @@ void publish_object_state(int* publish_rate){
 
     object_pose_transform.setOrigin(tf_trans);
     object_pose_transform.setRotation(tf_quat);
-    object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "/object"));
+    object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/gripper_link", "/object"));
 
-    if(actiontype == 2 || actiontype == 3 || actiontype == 4){ // todo
+    if(actiontype == 2 || actiontype == 3 || actiontype == 4){
       if(!predicted_hand_pose.isIdentity() && !predicted_table_pose.isIdentity()){
         Eigen::Quaterniond hand_quat(predicted_hand_pose.block<3,3>(0,0).cast<double>());
         Eigen::Vector3d hand_trans(predicted_hand_pose.block<3,1>(0,3).cast<double>());
@@ -192,6 +200,9 @@ void publish_object_state(int* publish_rate){
 
       }
     }
+    std_msgs::UInt16 tstamp;
+    tstamp.data = trackstamp;
+    trackstamp_pub.publish(tstamp);
   }
 }
 
@@ -203,14 +214,33 @@ bool searchObjectTrig(icra20_manipulation_pose::SearchObject::Request &req,
     isTracking = true;
     actiontype = req.actiontype;
     if(req.actiontype == 2 || req.actiontype == 3 || req.actiontype == 4){
+      predicted_pose_in_hand.setZero();
       predicted_hand_pose.setIdentity();
       predicted_table_pose.setIdentity();
+      if(req.poseInHand.position.x != 0 || req.poseInHand.position.y != 0 ||
+         req.poseInHand.position.z != 0 || req.poseInHand.orientation.x != 0 ||
+         req.poseInHand.orientation.y != 0 || req.poseInHand.orientation.z != 0 ||
+         req.poseInHand.orientation.w != 0 ){ // if there is a init pose given
+        Eigen::Matrix3f R = Eigen::Quaternionf(req.poseInHand.orientation.w, 
+                                               req.poseInHand.orientation.x, 
+                                               req.poseInHand.orientation.y, 
+                                               req.poseInHand.orientation.z).toRotationMatrix();
+        predicted_pose_in_hand.block<3,3>(0,0) = R;
+
+        predicted_pose_in_hand(0,3) = req.poseInHand.position.x;
+        predicted_pose_in_hand(1,3) = req.poseInHand.position.y;
+        predicted_pose_in_hand(2,3) = req.poseInHand.position.z;
+        predicted_pose_in_hand(3,3) = 1.0;
+      }
     }
   }else{
     isTracking = false;
     actiontype = 0;
+    predicted_pose_in_hand.setZero();
+    predicted_hand_pose.setIdentity();
+    predicted_table_pose.setIdentity();
   }
-  model2scene.setIdentity();
+  model2hand.setIdentity();
   
   return true;
 }
@@ -223,12 +253,14 @@ int main(int argc, char **argv)
   // cv::namedWindow("depth_view");
 
   // initialize all variables
-  model2scene.setIdentity();
+  model2hand.setIdentity();
+  predicted_pose_in_hand.setZero();
   predicted_hand_pose.setIdentity();
   predicted_table_pose.setIdentity();
   initFlag = false;
   isTracking = false;
   actiontype = 0;
+  trackstamp = 0;
   bool istableTracked = false;
   Eigen::Matrix4f table_offset;
   table_offset.setIdentity();
@@ -319,7 +351,7 @@ int main(int argc, char **argv)
   // init hand
   HandT42 hand(&cfg, cfg.cam_intrinsic, 640, 480);
 
-  ros::Rate loop_rate(1);
+  ros::Rate loop_rate(10);
 
   // main loop
   // all events of loop according to the action type
@@ -520,6 +552,9 @@ int main(int argc, char **argv)
     PointCloudRGBNormal::Ptr predicted_hand(new PointCloudRGBNormal);
     pcl::transformPointCloudWithNormals(*(hand._hand_cloud), *predicted_hand, hand._handbase_in_cam);
 
+    end_time = ros::WallTime::now();
+
+    ROS_INFO_STREAM("hand tracking time(ms): " << (end_time - start_time).toNSec()*1e-6);
     
     // extract the point cloud being to the object
     PointCloudSurfel::Ptr object1(new PointCloudSurfel);
@@ -566,12 +601,19 @@ int main(int argc, char **argv)
     est.setCurScene(scene_003, cloud_withouthand_raw, object_segment, scene_bgr, scene_depth);
     est.registerHandMesh(&hand);
     est.registerMesh(cfg.object_mesh_path, "object", Eigen::Matrix4f::Identity());
-    bool succeed = est.runSuper4pcs(ppfs);
+    // if predicted pose in hand is identity, then it will not guess with it
+    bool succeed;
+    if(predicted_pose_in_hand.isZero()){
+      succeed = est.runSuper4pcs(ppfs, Eigen::Matrix4f::Identity());
+    }else{
+      succeed = est.runSuper4pcs(ppfs, hand._handbase_in_cam * predicted_pose_in_hand);
+    }
+     
 
     if (!succeed)
     {
       printf("No pose found...\n");
-      model2scene.setIdentity();
+      model2hand.setIdentity();
     }
     else{
       printf("pose found...\n");
@@ -583,21 +625,25 @@ int main(int argc, char **argv)
       est.rejectByRender(cfg.pose_estimator_wrong_ratio, &hand);
       PoseHypo best(-1);
       est.selectBest(best);
-      model2scene = best._pose;
+      Eigen::Matrix4f model2scene = best._pose;
       // std::cout << "best tf:\n"
       //           << model2scene << "\n\n";
 
-      // publish the predicted object pointcloud in camera frame
+      // calculate the predicted object pose to hand
+      model2hand = hand._handbase_in_cam.inverse() * model2scene;
+
+      // // publish the predicted object pointcloud in camera frame
       PointCloudSurfel::Ptr predicted_model(new PointCloudSurfel);
       pcl::transformPointCloud(*model, *predicted_model, model2scene);
       predicted_model->header.frame_id = "/head_camera_rgb_optical_frame";
       predicted_object_pointcloud_pub.publish(predicted_model);
 
       // publish the pointcloud does not belong to the hand in camera frame
-      object1->header.frame_id = "/head_camera_rgb_optical_frame";
-      object_only_pointcloud_pub.publish(object1);
+      object_segment->header.frame_id = "/head_camera_rgb_optical_frame";
+      object_only_pointcloud_pub.publish(object_segment);
 
       if(actiontype == 2 || actiontype == 3 || actiontype == 4){
+
         // update the predicted hand and table poses
         Eigen::Matrix3f R = Eigen::Quaternionf(table_cloud_receiver.orientationw, table_cloud_receiver.orientationx, table_cloud_receiver.orientationy, table_cloud_receiver.orientationz).toRotationMatrix();
         predicted_table_pose.block<3,3>(0,0) = R;
@@ -608,12 +654,11 @@ int main(int argc, char **argv)
 
         original_table_pose = predicted_table_pose;
 
-        std::cout << "table offset" << std::endl;
-        std::cout << table_offset << std::endl;
-
         predicted_table_pose = predicted_table_pose * table_offset.inverse();
 
         predicted_hand_pose = hand._handbase_in_cam;
+
+        predicted_pose_in_hand = model2hand;
       }
     }
     
@@ -635,6 +680,8 @@ int main(int argc, char **argv)
 
     hand.reset();
     est.reset();
+    // update the time stamp
+    trackstamp++;
 
     // cv::imshow("view", scene_bgr);
     // cv::imshow("depth_view", scene_depth);

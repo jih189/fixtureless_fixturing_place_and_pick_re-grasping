@@ -60,7 +60,7 @@ void PoseEstimator<PointT>::reset()
 }
 
 template<class PointT>
-bool PoseEstimator<PointT>::runSuper4pcs(const std::map<std::vector<int>, std::vector<std::pair<int, int> > > &ppfs)
+bool PoseEstimator<PointT>::runSuper4pcs(const std::map<std::vector<int>, std::vector<std::pair<int, int> > > &ppfs, const Eigen::Matrix4f &init_pose)
 {
   pcl::Super4PCS<PointT,PointT> super4pcs;
   super4pcs.options_.sample_size = cfg->super4pcs_sample_size;
@@ -76,26 +76,44 @@ bool PoseEstimator<PointT>::runSuper4pcs(const std::map<std::vector<int>, std::v
   super4pcs.setInputSource (_model);    // Q
   super4pcs.setInputTarget (_scene_high_confidence);    // P, we extracted base on scene
   boost::shared_ptr<pcl::PointCloud<PointT> > aligned(new pcl::PointCloud<PointT>);
-  super4pcs.align (*aligned);
+  super4pcs.align (*aligned, init_pose);
 
   std::vector<Eigen::Matrix4f,Eigen::aligned_allocator<Eigen::Matrix4f> > hypos;
   std::vector<float> scores;
   super4pcs.getPoseHypo(hypos,scores);
   assert(hypos.size()==scores.size());
 
-  if (hypos.size()==0)
+  int numfeasiblePose = 0;
+  std::vector<bool> feasibilearray(hypos.size(), true);
+
+  if(!init_pose.isIdentity()){
+    for (int i=0;i<hypos.size();i++)
+    {
+      Eigen::Matrix3f error_m = init_pose.block<3,3>(0,0) * hypos[i].block<3,3>(0,0).transpose();
+      if(Eigen::AngleAxisf(error_m).angle() < 0.1)
+        numfeasiblePose++;
+      else
+        feasibilearray[i] = false;
+    }
+  }
+  else{
+    numfeasiblePose = hypos.size();
+  }
+
+  if (numfeasiblePose==0)
   {
     return false;
   }
 
   _pose_hypos.clear();
-  _pose_hypos.reserve(hypos.size());
-
+  _pose_hypos.reserve(numfeasiblePose);
 
   for (int i=0;i<hypos.size();i++)
   {
-    _pose_hypos.push_back(PoseHypo(hypos[i], i, scores[i]));
+    if(feasibilearray[i])
+      _pose_hypos.push_back(PoseHypo(hypos[i], i, scores[i]));
   }
+
   return true;
 }
 
@@ -498,7 +516,7 @@ void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo)
     }
   }
 
-  best_hypo.print();
+  // best_hypo.print();
 
 }
 
@@ -565,7 +583,7 @@ void PoseEstimator<PointT>::rejectByCollisionOrNonTouching(HandT42* hand)
   const float collision_dist = std::min(-_smallest_dim * collision_dist_ratio, -0.007f);
   const float inside_ob_dist = std::min(-_smallest_dim/5, -0.01f);
   const float non_touch_dist = cfg->yml["non_touch_dist"].as<float>();
-  printf("collision_dist=%f, non_touch_dist=%f\n",collision_dist,non_touch_dist);
+  // printf("collision_dist=%f, non_touch_dist=%f\n",collision_dist,non_touch_dist);
   const float collision_finger_dist = -cfg->yml["collision_finger_dist"].as<float>();
   Eigen::Matrix4f cam2handbase = hand->_handbase_in_cam.inverse();
   const float collision_finger_volume_ratio = cfg->yml["collision_finger_volume_ratio"].as<float>();

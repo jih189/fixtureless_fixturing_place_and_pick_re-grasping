@@ -126,7 +126,7 @@ non_touch_dist: 0.01
 collision_finger_dist: 0.012
 collision_finger_volume_ratio: 0.25
 
-super4pcs_sample_size: 100    #sample points on Q(model)
+super4pcs_sample_size: 300    #sample points on Q(model)
 super4pcs_overlap: 0.2
 super4pcs_delta: 0.003
 super4pcs_dispersion: 0.5

@@ -33,8 +33,8 @@ from regrasp_planner import RegripPlanner
 
 import rospy
 
-from std_srvs.srv import Empty
-from geometry_msgs.msg import Point
+from std_msgs.msg import UInt16
+from geometry_msgs.msg import Pose
 from rail_segmentation.srv import SearchTable
 from icra20_manipulation_pose.srv import SearchObject
 
@@ -42,6 +42,8 @@ from visualization_msgs.msg import Marker
 from fetch_robot import Fetch_Robot
 
 import tf
+
+trackstamp = 0
 
 def showPlacePos(rotation, trans):
    marker = Marker()
@@ -67,7 +69,23 @@ def showPlacePos(rotation, trans):
 
    return marker
 
+def transformProduct(t1, t2):
+   trans1, rot1= t1
+   trans1_mat = tf.transformations.translation_matrix(trans1)
+   rot1_mat = tf.transformations.quaternion_matrix(rot1)
+   mat1 = np.dot(trans1_mat, rot1_mat)
 
+   trans2, rot2 = t2
+   trans2_mat = tf.transformations.translation_matrix(trans2)
+   rot2_mat = tf.transformations.quaternion_matrix(rot2)
+   mat2 = np.dot(trans2_mat, rot2_mat)
+
+   mat3 = np.dot(mat1, mat2)
+   trans3 = tf.transformations.translation_from_matrix(mat3)
+   rot3 = tf.transformations.quaternion_from_matrix(mat3)
+
+   return trans3, rot3
+   
 
 def showManipulationPos(x, y, z):
    cylinderHeight = 0.01
@@ -96,11 +114,18 @@ def showManipulationPos(x, y, z):
 
    return marker
 
+def trackstamp_callback(input):
+   global trackstamp
+   trackstamp = input.data
+
 if __name__=='__main__':
    rospy.init_node('main_node')
 
+   PRE_PLACE_HEIGHT = 0.03
+
    listener = tf.TransformListener()
    br = tf.TransformBroadcaster()
+   rospy.Subscriber("trackstamp", UInt16, trackstamp_callback)
    
    # marker_pub = rospy.Publisher("/manipulate_pos", Marker, queue_size=1)
    goal_pub1 = rospy.Publisher("/goal_object1", Marker, queue_size=1)
@@ -149,10 +174,11 @@ if __name__=='__main__':
    robot.goto_pose(0.34969, 0.20337, 0.92054, 0.081339, 0.012991, -0.63111, 0.77131)
 
    ## launch the tracker
-   objectSearcherTrigger(True, 1)
+   objectSearcherTrigger(True, 1, Pose())
 
    foundObject = True
    hand_grasp_pose = None
+   pose_in_hand = Pose()
    try:
       # attand the object as a part of the arm
       listener.waitForTransform('/base_link', '/object', rospy.Time(), rospy.Duration(4.0))
@@ -175,12 +201,24 @@ if __name__=='__main__':
       (trans,rot) = listener.lookupTransform('/gripper_link', '/r_gripper_finger_link', rospy.Time())
       starthandwidth = trans[1] * 1000
 
+      ## get the object pose in hand
+      listener.waitForTransform('/gripper_link', '/object', rospy.Time(), rospy.Duration(4.0))
+      (trans,rot) = listener.lookupTransform('/gripper_link', '/object',rospy.Time())
+      pose_in_hand.position.x = trans[0]
+      pose_in_hand.position.y = trans[1]
+      pose_in_hand.position.z = trans[2]
+
+      pose_in_hand.orientation.x = rot[0]
+      pose_in_hand.orientation.y = rot[1]
+      pose_in_hand.orientation.z = rot[2]
+      pose_in_hand.orientation.w = rot[3]
+
    except:
       print "fail to detect the object"
       foundObject = False
 
    ## stop the tracker
-   objectSearcherTrigger(False, 0)
+   objectSearcherTrigger(False, 0, Pose())
 
    ## set goal grasp pose in object frame
    goalpose = Mat4(1.0,0.0,0.0,0.0,0.0,0.0,-1.0,0.0,0.0,1.0,0.0,0.0,53.3199386597,-8.46575927734,-4.76837158203e-07,1.0)
@@ -213,7 +251,7 @@ if __name__=='__main__':
          # print tablepos
          tablepos[0,3] = tableresult.centroid.x
          tablepos[1,3] = tableresult.centroid.y
-         tablepos[2,3] = tableresult.centroid.z + 0.02
+         tablepos[2,3] = tableresult.centroid.z + PRE_PLACE_HEIGHT
 
          for ri, tableangle in enumerate([0.0, 0.7853975, 1.570795, 2.3561925, 3.14159, 3.9269875, 4.712385, 5.4977825]):
             # for tableangle in [0.0]:
@@ -247,21 +285,59 @@ if __name__=='__main__':
          raw_input("ready to place!!")
          robot.execute_plan(plan)
 
-         objectSearcherTrigger(True, 2)
+         objectSearcherTrigger(True, 2, pose_in_hand)
 
+         ## need to update the object pose in hand
+         try:
+            # attand the object as a part of the arm
+            listener.waitForTransform('/base_link', '/object', rospy.Time(), rospy.Duration(4.0))
+            (trans,rot) = listener.lookupTransform('/base_link', '/object', rospy.Time())
+            robot.addManipulatedObject("object", trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3], "objects/cuboid.stl")
+         except:
+            print "fail to detect the object"
+            foundObject = False
          raw_input("start to place!!")
          ## need to switch to cartesian controller
-         # plan,fraction = robot.plan_cartesian_path(goal_motion = (0,0,-0.02))
-         # robot.display_trajectory(plan)
+         robot.switchController('my_cartesian_motion_controller', 'arm_controller')
 
-         objectSearcherTrigger(False, 0)
+         # get gripper pose when placing
+         listener.waitForTransform('/original_table', '/gripper_link', rospy.Time(), rospy.Duration(4.0))
+         place_hand_in_table = listener.lookupTransform('/original_table', '/gripper_link', rospy.Time())
+         place_hand_in_table[0][2] -= PRE_PLACE_HEIGHT
 
-         # raw_input("place now")
-         # robot.execute_plan(plan)
+         current_stamp = trackstamp - 1
 
+         while not rospy.is_shutdown():
+            if current_stamp < trackstamp:
+               current_stamp += 1
 
+               # get current gripper pose in cartisian motion base
+               listener.waitForTransform('/torso_lift_link', '/gripper_link', rospy.Time(), rospy.Duration(4.0))
+               gripper_pose = listener.lookupTransform('/torso_lift_link', '/gripper_link', rospy.Time())
 
-   # raw_input("press enter!")
+               # get the current table relate to the hand
+               listener.waitForTransform('/predicted_hand', '/predicted_table', rospy.Time(), rospy.Duration(4.0))
+               predicted_table_in_hand = listener.lookupTransform('/predicted_hand', '/predicted_table', rospy.Time())
+
+               predict_place = transformProduct(predicted_table_in_hand, place_hand_in_table)
+
+               targetposition, targetorientation = transformProduct(gripper_pose, predict_place)
+
+               if(robot.moveToFrame(targetposition, targetorientation)):
+                  break
+               trans_error, rot_error = robot.getError()
+               print "error trans ", trans_error, " rot ", rot_error
+            else:
+               rospy.sleep(1.0)
+
+         robot.switchController('arm_controller', 'my_cartesian_motion_controller')
+
+         raw_input("finish place")
+
+         objectSearcherTrigger(False, 0, Pose())
+
+         # open gripper and unattanch the object from the end-effector
+
    # show object state in hand
    planner.plotObject(base)
    

@@ -70,6 +70,7 @@
 #include <std_msgs/Float32MultiArray.h>
 #include <std_msgs/String.h>
 #include <std_msgs/Bool.h>
+#include <std_msgs/UInt16.h>
 #include <geometry_msgs/PointStamped.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_types.h>

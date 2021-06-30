@@ -2,8 +2,14 @@ import sys
 import rospy
 import moveit_commander
 import moveit_msgs.msg
-import geometry_msgs.msg
+from geometry_msgs.msg import Pose, PoseStamped
 import copy
+from controller_manager_msgs.srv import SwitchController, ListControllers
+import threading
+import tf
+import numpy as np
+from scipy.spatial.transform import Rotation as R
+import math
 
 class Fetch_Robot():
     def __init__(self):
@@ -19,7 +25,8 @@ class Fetch_Robot():
         self.group = moveit_commander.MoveGroupCommander(self.group_name)
 
         self.display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory, queue_size=10)
-   
+        self.cartesian_motion_controller_publisher = rospy.Publisher('/my_cartesian_motion_controller/target_frame', PoseStamped, queue_size=5)
+
         planning_frame = self.group.get_planning_frame()
         print "=========== Reference frame:%s" % planning_frame
 
@@ -31,9 +38,106 @@ class Fetch_Robot():
 
         self.timeout = 4.0
 
+        ############ parameters for cartisian motion controller #######################
+        self.armbasename = 'torso_lift_link'
+        self.targetFrame = PoseStamped()
+        self.targetFrame.header.frame_id = self.armbasename
+        self.thread = threading.Thread(target=self.publishTargetFrame, args=())
+
+        self.transThreshold = 0.003
+        self.rotThreshold = 0.01
+
+        # used to get current robot state
+        self.tf_listener = tf.TransformListener()
+
+    def setErrorThreshold(self, transThreshold, rotThreshold):
+        self.transThreshold = transThreshold
+        self.rotThreshold = rotThreshold
+
+    def publishTargetFrame(self):
+        while not rospy.is_shutdown():
+            rospy.Rate(10).sleep()
+            self.targetFrame.header.stamp = rospy.Time()
+            self.cartesian_motion_controller_publisher.publish(self.targetFrame)
+            transerror, rotationerror = self.getError()
+            if(transerror < self.transThreshold and rotationerror < self.rotThreshold):
+                break
+
+    # this function returns the error between target frame and current frame
+    def getError(self):
+
+        trans1 = [self.targetFrame.pose.position.x, self.targetFrame.pose.position.y, self.targetFrame.pose.position.z]
+        rot1 = [self.targetFrame.pose.orientation.x, self.targetFrame.pose.orientation.y, self.targetFrame.pose.orientation.z, self.targetFrame.pose.orientation.w]
+
+        rot1_mat = tf.transformations.quaternion_matrix(rot1)[:3,:3]
+
+        trans2, rot2 = self.getCurrentFrame()
+        rot2_mat = tf.transformations.quaternion_matrix(rot2)[:3,:3]
+
+        pd = R.from_dcm(np.dot(rot1_mat, rot2_mat.transpose())).as_quat()
+        angle = 2 * math.atan2(np.linalg.norm(pd[:3]),pd[3])
+
+        trans = np.linalg.norm(np.array(trans1) - np.array(trans2))
+
+        return trans, angle
+
+    # this function is used by cartisian motion controller
+    def moveToFrame(self, targetposition, targetorientation):
+
+        transerror, rotationerror = self.getError()
+        # if the error is lower than threshold, then it will not set the target frame
+        if(transerror < self.transThreshold and rotationerror < self.rotThreshold):
+            return True
+
+        self.setTargetFrame(targetposition, targetorientation)
+        
+        if(not self.thread.is_alive()):
+            self.thread.start()
+        
+        return False
+
+    def setTargetFrame(self, targetposition, targetorientation):
+        
+        self.targetFrame.pose.position.x = targetposition[0]
+        self.targetFrame.pose.position.y = targetposition[1]
+        self.targetFrame.pose.position.z = targetposition[2]
+
+        self.targetFrame.pose.orientation.x = targetorientation[0]
+        self.targetFrame.pose.orientation.y = targetorientation[1]
+        self.targetFrame.pose.orientation.z = targetorientation[2]
+        self.targetFrame.pose.orientation.w = targetorientation[3]
+
+    def getCurrentFrame(self):
+        # need to set the current end-effector pose as the target frame
+        try:
+            self.tf_listener.waitForTransform(self.armbasename, '/gripper_link', rospy.Time(), rospy.Duration(4.0))
+            (trans,rot) = self.tf_listener.lookupTransform(self.armbasename, '/gripper_link', rospy.Time())
+            return trans, rot
+        except:
+            print "fail to detect gripper state!"
+            return None, None
+
+    def switchController(self, startController, stopController):
+        rospy.wait_for_service('/controller_manager/list_controllers')
+        try:
+            list_controller = rospy.ServiceProxy('/controller_manager/list_controllers', ListControllers)
+            # if the controller is alreay running, the return directly
+            if(startController in [controller.name for controller in list_controller().controller if controller.state=="running"]):
+                return
+        except rospy.ServiceException as e:
+            print "Service called: %s" % e
+
+        rospy.wait_for_service('/controller_manager/switch_controller')
+        try:
+            switch_controller = rospy.ServiceProxy('/controller_manager/switch_controller', SwitchController)
+            switch_controller([startController], [stopController], 2, True, 2.0)
+        except rospy.ServiceException as e:
+            print "Service called: %s" % e
+
+
     def addCollisionTable(self, objectname, x, y, z, rx, ry, rz, rw, width, depth, height):
         
-        table_pose = geometry_msgs.msg.PoseStamped()
+        table_pose = PoseStamped()
         cylinderHeight = 0.001
         table_pose.header.frame_id = self.robot.get_planning_frame()
         table_pose.pose.position.x = x
@@ -61,7 +165,7 @@ class Fetch_Robot():
         touch_links.append("gripper_link")
         touch_links.append("l_gripper_finger_link")
         touch_links.append("r_gripper_finger_link")
-        object_pose = geometry_msgs.msg.PoseStamped()
+        object_pose = PoseStamped()
         object_pose.header.frame_id = self.robot.get_planning_frame()
         object_pose.pose.position.x = x
         object_pose.pose.position.y = y
@@ -89,7 +193,7 @@ class Fetch_Robot():
             second = rospy.get_time()
 
     def goto_pose(self, x, y, z, rx, ry, rz, rw):
-        pose_goal = geometry_msgs.msg.Pose()
+        pose_goal = Pose()
         pose_goal.orientation.x = rx
         pose_goal.orientation.y = ry
         pose_goal.orientation.z = rz
@@ -104,7 +208,7 @@ class Fetch_Robot():
         self.group.clear_pose_targets()
 
     def planto_pose(self, trans, rotation):
-        pose_goal = geometry_msgs.msg.Pose()
+        pose_goal = Pose()
         pose_goal.orientation.x = rotation[0]
         pose_goal.orientation.y = rotation[1]
         pose_goal.orientation.z = rotation[2]
@@ -128,7 +232,7 @@ class Fetch_Robot():
         self.group.set_end_effector_link("gripper_link")
         input = []
         for trans, rotation in poses:
-            pose_goal = geometry_msgs.msg.Pose()
+            pose_goal = Pose()
             pose_goal.orientation.x = rotation[0]
             pose_goal.orientation.y = rotation[1]
             pose_goal.orientation.z = rotation[2]
