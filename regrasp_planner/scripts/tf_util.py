@@ -2,6 +2,36 @@
 import rospy
 import tf
 import numpy as np
+import math
+from scipy.spatial.transform import Rotation as R
+
+def getErrorBetweenTransforms(p1, p2):
+    trans1, rot1 = p1
+    rot1_mat = tf.transformations.quaternion_matrix(rot1)[:3,:3]
+
+    trans2, rot2 = p2
+    rot2_mat = tf.transformations.quaternion_matrix(rot2)[:3,:3]
+
+    pd = R.from_dcm(np.dot(rot1_mat, rot2_mat.transpose())).as_quat()
+    angle = 2 * math.atan2(np.linalg.norm(pd[:3]),pd[3])
+
+    trans = np.linalg.norm(np.array(trans1) - np.array(trans2))
+    return trans, angle
+
+def findCloseTransform(trans, translist):
+
+    resulttrans = None
+    resultrot = None
+    resulterror = 1000.0
+
+    for t in translist:
+        _, roterror = getErrorBetweenTransforms(trans, t)
+        if roterror < resulterror:
+            resulttrans = t[0]
+            resultrot = t[1]
+            resulterror = roterror
+
+    return resulttrans, resultrot
 
 def transformProduct(t1, t2):
    trans1, rot1= t1

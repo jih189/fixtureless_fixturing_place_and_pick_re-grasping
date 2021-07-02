@@ -44,7 +44,7 @@ from fetch_robot import Fetch_Robot
 import tf
 from scipy.spatial.transform import Rotation as R
 
-from  tf_util import TF_Helper, transformProduct, getMatrixFromQuaternionAndTrans
+from  tf_util import TF_Helper, transformProduct, getMatrixFromQuaternionAndTrans, findCloseTransform
 
 trackstamp = 0
 
@@ -217,6 +217,7 @@ if __name__=='__main__':
 
             # move the pre placement position
             placeGripperPoses = []
+            possibleGripperPosesInTable = []
             # set different placement angle for planing
             for tableangle in [0.0, 0.7853975, 1.570795, 2.3561925, 3.14159, 3.9269875, 4.712385, 5.4977825]:
                rotationInZ = np.identity(4)
@@ -228,6 +229,12 @@ if __name__=='__main__':
                transformT = np.squeeze(np.asarray(gripperP[:3,3]))
 
                placeGripperPoses.append((transformT, rotationQ))
+
+               gripperP = rotationInZ.dot(current_place).dot(hand_grasp_pose)
+               rotationQ = tf.transformations.quaternion_from_matrix(gripperP) # this function takes 4*4 matrix
+               transformT = np.squeeze(np.asarray(gripperP[:3,3]))
+
+               possibleGripperPosesInTable.append((transformT, rotationQ))
 
             # ## find the plan to place the object to the pre-place
             plan = robot.planto_poses(placeGripperPoses)
@@ -258,8 +265,7 @@ if __name__=='__main__':
             robot.switchController('my_cartesian_motion_controller', 'arm_controller')
 
             # get gripper pose for place in table frame
-            place_hand_in_table = tf_helper.getTransform('/original_table', '/gripper_link')
-            place_hand_in_table[0][2] -= PRE_PLACE_HEIGHT
+            place_hand_in_table = findCloseTransform(tf_helper.getTransform('/original_table', '/gripper_link'), possibleGripperPosesInTable)
 
             current_stamp = trackstamp - 1
 
