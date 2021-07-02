@@ -10,9 +10,12 @@ import tf
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import math
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from sensor_msgs.msg import JointState
 
 class Fetch_Robot():
     def __init__(self):
+
         moveit_commander.roscpp_initialize(sys.argv)
         ## instatiate a robotCommander object.
         self.robot = moveit_commander.RobotCommander()
@@ -25,7 +28,8 @@ class Fetch_Robot():
         self.group = moveit_commander.MoveGroupCommander(self.group_name)
 
         self.display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory, queue_size=10)
-        self.cartesian_motion_controller_publisher = rospy.Publisher('/my_cartesian_motion_controller/target_frame', PoseStamped, queue_size=5)
+        self.cartesian_motion_controller_publisher = rospy.Publisher('my_cartesian_motion_controller/target_frame', PoseStamped, queue_size=5)
+        self.gripper_publisher = rospy.Publisher('gripper_controller/command', JointTrajectory, queue_size=5)
 
         planning_frame = self.group.get_planning_frame()
         print "=========== Reference frame:%s" % planning_frame
@@ -42,13 +46,72 @@ class Fetch_Robot():
         self.armbasename = 'torso_lift_link'
         self.targetFrame = PoseStamped()
         self.targetFrame.header.frame_id = self.armbasename
-        self.thread = threading.Thread(target=self.publishTargetFrame, args=())
+        self.thread = None
 
         self.transThreshold = 0.003
         self.rotThreshold = 0.01
 
         # used to get current robot state
         self.tf_listener = tf.TransformListener()
+
+        self.traj = JointTrajectory()
+        self.traj.joint_names = ['r_gripper_finger_joint']
+
+    def getFingerValue(self):
+        if not rospy.is_shutdown():
+            js = rospy.wait_for_message('joint_states', JointState)
+            # get index of finger
+            index = js.name.index('r_gripper_finger_joint')
+            return js.position[index]
+        else:
+            return None
+
+    def openGripper(self):
+        pt = JointTrajectoryPoint()
+        pt.positions = [0.04]
+        pt.time_from_start = rospy.Duration(1.0)
+        self.traj.points = [pt]
+
+        r = rospy.Rate(10)
+        last_value = self.getFingerValue()
+        stablenum = 0
+        while not rospy.is_shutdown():
+            self.traj.header.stamp = rospy.Time.now()
+            self.gripper_publisher.publish(self.traj)
+            r.sleep()
+            # print "error ", abs(last_value - self.getFingerValue()) 
+            if abs(last_value - self.getFingerValue()) < 0.0001:
+                stablenum+=1
+            else:
+                stablenum = 0
+            if stablenum == 5 or abs(pt.positions[0] - self.getFingerValue()) < 0.0001:
+                break
+            last_value = self.getFingerValue()
+        return last_value
+            
+
+    def closeGripper(self):
+        pt = JointTrajectoryPoint()
+        pt.positions = [-0.04]
+        pt.time_from_start = rospy.Duration(1.0)
+        self.traj.points = [pt]
+
+        r = rospy.Rate(10)
+        last_value = self.getFingerValue()
+        stablenum = 0
+        while not rospy.is_shutdown():
+            self.traj.header.stamp = rospy.Time.now()
+            self.gripper_publisher.publish(self.traj)
+            r.sleep()
+            # print "error ", abs(last_value - self.getFingerValue()) 
+            if abs(last_value - self.getFingerValue()) < 0.0001:
+                stablenum+=1
+            else:
+                stablenum = 0
+            if stablenum == 5 or abs(pt.positions[0] - self.getFingerValue()) < 0.0001:
+                break
+            last_value = self.getFingerValue()
+        return last_value
 
     def setErrorThreshold(self, transThreshold, rotThreshold):
         self.transThreshold = transThreshold
@@ -84,15 +147,21 @@ class Fetch_Robot():
     # this function is used by cartisian motion controller
     def moveToFrame(self, targetposition, targetorientation):
 
+        self.setTargetFrame(targetposition, targetorientation)
+
         transerror, rotationerror = self.getError()
         # if the error is lower than threshold, then it will not set the target frame
         if(transerror < self.transThreshold and rotationerror < self.rotThreshold):
             return True
 
-        self.setTargetFrame(targetposition, targetorientation)
-        
-        if(not self.thread.is_alive()):
+        if(self.thread == None):
+            self.thread = threading.Thread(target=self.publishTargetFrame, args=())
             self.thread.start()
+        elif(not self.thread.is_alive()):
+            self.thread.join()
+            self.thread = threading.Thread(target=self.publishTargetFrame, args=())
+            self.thread.start()
+            
         
         return False
 
@@ -134,7 +203,6 @@ class Fetch_Robot():
         except rospy.ServiceException as e:
             print "Service called: %s" % e
 
-
     def addCollisionTable(self, objectname, x, y, z, rx, ry, rz, rw, width, depth, height):
         
         table_pose = PoseStamped()
@@ -157,8 +225,19 @@ class Fetch_Robot():
             if objectname in self.scene.get_known_object_names():
                 break
             second = rospy.get_time()
-            
 
+    def detachManipulatedObject(self, objectname):
+        # detach the object from the hand
+        self.scene.remove_attached_object(self.eef_link, name=objectname)
+        # gaurantee the object is detached
+        start = rospy.get_time()
+        second = rospy.get_time()
+        while (second - start) < self.timeout and not rospy.is_shutdown():
+            attached_objects = self.scene.get_attached_objects([objectname])
+            if len(attached_objects.keys()) == 0:
+                break
+            second = rospy.get_time()
+            
     def addManipulatedObject(self, objectname, x, y, z, rx, ry, rz, rw, filename):
         touch_links = self.robot.get_link_names(group=self.group_name)
         # need to add the links which are not belong to the group
@@ -268,7 +347,6 @@ class Fetch_Robot():
         self.group.set_end_effector_link(current_endeffector)
 
         return plan, fraction
-
 
     def display_trajectory(self, plan):
         robot = self.robot
