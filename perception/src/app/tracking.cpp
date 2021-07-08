@@ -210,13 +210,15 @@ void publish_object_state(int* publish_rate){
 bool searchObjectTrig(icra20_manipulation_pose::SearchObject::Request &req,
         icra20_manipulation_pose::SearchObject::Response &res){
 
+  predicted_pose_in_hand.setZero();
+  predicted_hand_pose.setIdentity();
+  predicted_table_pose.setIdentity();
+
   if(req.startsearch){
     isTracking = true;
     actiontype = req.actiontype;
     if(req.actiontype == 2 || req.actiontype == 3 || req.actiontype == 4){
-      predicted_pose_in_hand.setZero();
-      predicted_hand_pose.setIdentity();
-      predicted_table_pose.setIdentity();
+      
       if(req.poseInHand.position.x != 0 || req.poseInHand.position.y != 0 ||
          req.poseInHand.position.z != 0 || req.poseInHand.orientation.x != 0 ||
          req.poseInHand.orientation.y != 0 || req.poseInHand.orientation.z != 0 ||
@@ -236,9 +238,6 @@ bool searchObjectTrig(icra20_manipulation_pose::SearchObject::Request &req,
   }else{
     isTracking = false;
     actiontype = 0;
-    predicted_pose_in_hand.setZero();
-    predicted_hand_pose.setIdentity();
-    predicted_table_pose.setIdentity();
   }
   model2hand.setIdentity();
   

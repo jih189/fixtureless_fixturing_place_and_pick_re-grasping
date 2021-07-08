@@ -44,7 +44,7 @@ from fetch_robot import Fetch_Robot
 import tf
 from scipy.spatial.transform import Rotation as R
 
-from  tf_util import TF_Helper, transformProduct, getMatrixFromQuaternionAndTrans, findCloseTransform
+from  tf_util import TF_Helper, transformProduct, getMatrixFromQuaternionAndTrans, findCloseTransform, getTransformFromPoseMat
 
 trackstamp = 0
 
@@ -139,13 +139,27 @@ if __name__=='__main__':
    ## move the end-effector into robot's camera view
    robot = Fetch_Robot()
 
+   # todo: delete this line later
+   # tableresult.centroid.x = 0.675265491009
+   # tableresult.centroid.y = 0.0473214462399
+   # tableresult.centroid.z = 0.731305658817
+   # tableresult.orientation.x = 0.0
+   # tableresult.orientation.y = 0.0
+   # tableresult.orientation.z = 0.702805801162
+   # tableresult.orientation.w = 0.711381758167   
+   # tableresult.width = 0.423765778542
+   # tableresult.depth = 0.423497259617
+   # tableresult.height = 0.0136861801147
+
    ## show the manipulation position in rviz
    # marker = showManipulationPos(tableresult.centroid.x, tableresult.centroid.y, tableresult.centroid.z)
    # marker_pub.publish(marker)
    # add the table as a collision object into the world
-   robot.addCollisionTable("table", tableresult.centroid.x, tableresult.centroid.y, tableresult.centroid.z, \
+   robot.addCollisionTable("table", tableresult.center.x, tableresult.center.y, tableresult.center.z, \
          tableresult.orientation.x, tableresult.orientation.y, tableresult.orientation.z, tableresult.orientation.w, \
          tableresult.width, tableresult.depth, tableresult.height)
+
+
 
    robot.goto_pose(0.34969, 0.20337, 0.92054, 0.081339, 0.012991, -0.63111, 0.77131)
 
@@ -185,7 +199,8 @@ if __name__=='__main__':
    objectSearcherTrigger(False, 0, Pose())
 
    ## set goal grasp pose in object frame
-   goalpose = Mat4(1.0,0.0,0.0,0.0,0.0,0.0,-1.0,0.0,0.0,1.0,0.0,0.0,53.3199386597,-8.46575927734,-4.76837158203e-07,1.0)
+   goalpose = Mat4(-0.01803, 0.0115786, -0.99977, 0.0, -0.0139524, 0.999833, 0.0118309, 0.0, 0.99974, 0.0141625, -0.0178654, 0.0, -19.4958, -0.196471, -12.322, 1.0)
+
    goalhandwidth = 38.999997139
    planner.addGoalGrasp(goalhandwidth, goalpose)
 
@@ -193,11 +208,10 @@ if __name__=='__main__':
       planner.addStartGrasp(starthandwidth, startpose)
       # planner.showgraph()
       placementsequence = planner.searchPath()
-
+      planner.showHand(starthandwidth, goalpose, base)
       planner.showHand(starthandwidth, startpose, base)
       print "placement sequence ", placementsequence
-
-      current_place_count = 0
+      
 
       if len(placementsequence) == 0:
          print "there is no way to place the object"
@@ -209,35 +223,96 @@ if __name__=='__main__':
 
          # get the manipulation position on the table
          tablepos = getMatrixFromQuaternionAndTrans(tableresult.orientation, tableresult.centroid)
-         tablepos[2,3] += PRE_PLACE_HEIGHT
+         # tablepos[2,3] += PRE_PLACE_HEIGHT
+
+         current_place_counter = 0
 
          for p in range(len(placements)):
             # get current placement on the table
             current_place = placements[p]
+            current_place_id = plan1[p]
 
-            # move the pre placement position
-            placeGripperPoses = []
-            possibleGripperPosesInTable = []
-            # set different placement angle for planing
+            # get the next grasp
+            if len(plan1) == current_place_counter + 1:
+               # this is final placement, so we need to grasp the object with target grasp pose
+               goalpose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * goalpose
+               # need to convert it bakc to normal metrics
+               goalpose = np.array([[goalpose[0][0],goalpose[1][0],goalpose[2][0],goalpose[3][0]/1000.0], \
+                                       [goalpose[0][1],goalpose[1][1],goalpose[2][1],goalpose[3][1]/1000.0], \
+                                       [goalpose[0][2],goalpose[1][2],goalpose[2][2],goalpose[3][2]/1000.0], \
+                                       [goalpose[0][3],goalpose[1][3],goalpose[2][3],goalpose[3][3]]])
+               nextgraspposes = [goalpose]
+            else:
+               next_placement_id = plan1[current_place_counter + 1]
+
+               # get common grasp
+               nextgraspids = planner.findCommandGrasp(current_place_id, next_placement_id)
+               print "common grip ", nextgraspids
+               nextgraspposes = planner.getGrasps(current_place_id, nextgraspids)
+
+
+            base_link_in_torso_lift = tf_helper.getPoseMat('/torso_lift_link', '/base_link')
+
+            robot.addViewBox()
+
+            place_ik_result = None
+            place_pose = None
+            place_pose_in_table = None
+            grasp_ik_result = None
+            grasp_pose = None
+            grasp_pose_in_table = None
+
+            # find place and pick arm poses
             for tableangle in [0.0, 0.7853975, 1.570795, 2.3561925, 3.14159, 3.9269875, 4.712385, 5.4977825]:
                rotationInZ = np.identity(4)
                rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
 
                ## calculate the gripper pose on table
-               gripperP = tablepos.dot(rotationInZ).dot(current_place).dot(hand_grasp_pose)
-               rotationQ = tf.transformations.quaternion_from_matrix(gripperP) # this function takes 4*4 matrix
-               transformT = np.squeeze(np.asarray(gripperP[:3,3]))
+               place_pose_in_table = rotationInZ.dot(current_place).dot(hand_grasp_pose)
+               place_pose_tmp = base_link_in_torso_lift.dot(tablepos).dot(place_pose_in_table)
+               place_pose = getTransformFromPoseMat(place_pose_tmp)
+               place_ik_result = robot.solve_ik_collision_free(place_pose, 300)
+               # place_ik_result = robot.solve_ik(place_pose)
 
-               placeGripperPoses.append((transformT, rotationQ))
+               if place_ik_result == None:
+                  continue
 
-               gripperP = rotationInZ.dot(current_place).dot(hand_grasp_pose)
-               rotationQ = tf.transformations.quaternion_from_matrix(gripperP) # this function takes 4*4 matrix
-               transformT = np.squeeze(np.asarray(gripperP[:3,3]))
+               for nextgrasppose in nextgraspposes:
+                  grasp_pose_in_table = rotationInZ.dot(current_place).dot(nextgrasppose)
+                  grasp_pose_tmp = base_link_in_torso_lift.dot(tablepos).dot(grasp_pose_in_table)
+                  grasp_pose = getTransformFromPoseMat(grasp_pose_tmp)
+                  grasp_ik_result = robot.solve_ik_collision_free(grasp_pose, 300)
+                  # grasp_ik_result = robot.solve_ik(grasp_pose)
+                  if grasp_ik_result == None:
+                     continue
+                  else:
+                     break
+               if grasp_ik_result != None:
+                  break
 
-               possibleGripperPosesInTable.append((transformT, rotationQ))
+            robot.removeViewBox()
+
+            if grasp_ik_result != None and place_ik_result != None:
+               robot.display_pick_robot_state(grasp_ik_result)
+               robot.display_place_robot_state(place_ik_result)
+            else:
+               print "no solution found"
+               break
+
+            torso_lift_in_base_link = tf_helper.getTransform('/base_link', '/torso_lift_link')
+
+            place_pose = transformProduct(torso_lift_in_base_link, place_pose)
+            grasp_pose = transformProduct(torso_lift_in_base_link, grasp_pose)
+
+            pre_place_pose = place_pose
+            pre_place_pose[0][2] += 0.03
+            pre_grasp_pose = transformProduct(grasp_pose, [[-0.12,0,0],[0,0,0,1]])
+
+            # print "place solution ", place_pose
+            # print "pick solution ", pick_pose)
 
             # ## find the plan to place the object to the pre-place
-            plan = robot.planto_poses(placeGripperPoses)
+            plan = robot.planto_pose(pre_place_pose)
             # # visualize the plan
             robot.display_trajectory(plan)
 
@@ -247,6 +322,8 @@ if __name__=='__main__':
             robot.execute_plan(plan)
 
             objectSearcherTrigger(True, 2, pose_in_hand)
+
+            raw_input("start to place!!")
 
             ## need to update the object pose in hand
             try:
@@ -258,14 +335,12 @@ if __name__=='__main__':
                foundObject = False
                break
 
-            raw_input("start to place!!")
-
             # place from pre-place to place with cartesian motion controller
             ## need to switch to cartesian motion controller
             robot.switchController('my_cartesian_motion_controller', 'arm_controller')
 
             # get gripper pose for place in table frame
-            place_hand_in_table = findCloseTransform(tf_helper.getTransform('/original_table', '/gripper_link'), possibleGripperPosesInTable)
+            place_hand_in_table = getTransformFromPoseMat(place_pose_in_table)
 
             current_stamp = trackstamp - 1
 
@@ -301,8 +376,8 @@ if __name__=='__main__':
 
             # get current gripper pose in cartisian motion base
             gripper_pose = tf_helper.getTransform('/torso_lift_link', '/gripper_link')
-
-            targetposition, targetorientation = transformProduct(gripper_pose, [[-0.07,0,0],[0,0,0,1]])
+            # open gripper and unattanch the object from the end-effector
+            targetposition, targetorientation = transformProduct(gripper_pose, [[-0.12,0,0],[0,0,0,1]])
 
             while not rospy.is_shutdown():
                if(robot.moveToFrame(targetposition, targetorientation)):
@@ -314,20 +389,17 @@ if __name__=='__main__':
             raw_input("release object")
 
             # plan for the next grasp
+            plan = robot.planto_pose(pre_grasp_pose)
+            # # visualize the plan
+            robot.display_trajectory(plan)
 
-            break
+            raw_input("move to grasp")
+            robot.execute_plan(plan)
 
             
 
-         # open gripper and unattanch the object from the end-effector
-
-         # if len(placementsequence) == current_place_count + 1:
-         #    # this is final placement, so we need to grasp the object with target grasp pose
-         #    pass
-         # else:
-         #    next_placement = placementsequence[current_place_count + 1]
-
-         #    current_place_count += 1
+            current_place_counter += 1
+            break
 
    # show object state in hand
    planner.plotObject(base)

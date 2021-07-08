@@ -1,7 +1,10 @@
 import sys
+
+from numpy.core.defchararray import join
 import rospy
 import moveit_commander
 import moveit_msgs.msg
+from moveit_msgs.srv import GetStateValidity, GetStateValidityRequest
 from geometry_msgs.msg import Pose, PoseStamped
 import copy
 from controller_manager_msgs.srv import SwitchController, ListControllers
@@ -12,6 +15,8 @@ from scipy.spatial.transform import Rotation as R
 import math
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sensor_msgs.msg import JointState
+from trac_ik_python.trac_ik import IK
+import random
 
 class Fetch_Robot():
     def __init__(self):
@@ -24,10 +29,14 @@ class Fetch_Robot():
         self.scene = moveit_commander.PlanningSceneInterface()
         rospy.sleep(1.0)
 
+        self.viewboxname = "viewbox"
+
         self.group_name = "arm"
         self.group = moveit_commander.MoveGroupCommander(self.group_name)
 
         self.display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory, queue_size=10)
+        self.display_place_robot_state_publisher = rospy.Publisher('/move_group/display_place_robot_state', moveit_msgs.msg.DisplayRobotState, queue_size=10)
+        self.display_pick_robot_state_publisher = rospy.Publisher('/move_group/display_pick_robot_state', moveit_msgs.msg.DisplayRobotState, queue_size=10)
         self.cartesian_motion_controller_publisher = rospy.Publisher('my_cartesian_motion_controller/target_frame', PoseStamped, queue_size=5)
         self.gripper_publisher = rospy.Publisher('gripper_controller/command', JointTrajectory, queue_size=5)
 
@@ -57,6 +66,62 @@ class Fetch_Robot():
         self.traj = JointTrajectory()
         self.traj.joint_names = ['r_gripper_finger_joint']
 
+        self.ik_solver = IK('torso_lift_link', 'gripper_link')
+
+        # wait for validity check service
+        rospy.wait_for_service("check_state_validity")
+        self.state_valid_service = rospy.ServiceProxy('check_state_validity', GetStateValidity)
+
+    def generate_seed_state(self, numOfJoints):
+        result = []
+        for _ in range(numOfJoints):
+            result.append(random.uniform(-3.14, 3.14))
+        return result
+
+    def solve_ik_collision_free(self, pose, numOfAttempt):
+        robot_joint_state = moveit_msgs.msg.DisplayRobotState()
+        trans, rot = pose
+
+        for _ in range(numOfAttempt):
+            seed_state = self.generate_seed_state(self.ik_solver.number_of_joints)
+            
+            joint_values = self.ik_solver.get_ik(seed_state, trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3])
+            if joint_values == None:
+                return None
+
+            current_robot_state = moveit_msgs.msg.RobotState()
+            current_robot_state.joint_state.header.stamp = rospy.Time.now()
+            current_robot_state.joint_state.position = joint_values
+            current_robot_state.joint_state.name = self.ik_solver.joint_names
+
+            if self.is_state_valid(current_robot_state):
+                robot_joint_state.state = current_robot_state
+                return robot_joint_state
+    
+        return None
+
+    def is_state_valid(self, checked_robot_state):
+        req = GetStateValidityRequest()
+        req.group_name = 'arm'
+        req.robot_state = copy.deepcopy(checked_robot_state)
+        req.robot_state.joint_state.header.stamp = rospy.Time.now()
+        res = self.state_valid_service(req)
+        return res.valid
+
+    def solve_ik(self, pose):
+        robot_joint_state = moveit_msgs.msg.DisplayRobotState()
+        trans, rot = pose
+        seed_state = [0.0] * self.ik_solver.number_of_joints
+        
+        joint_values = self.ik_solver.get_ik(seed_state, trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3])
+        if joint_values == None:
+            return None
+        robot_joint_state.state.joint_state.position = joint_values
+        robot_joint_state.state.joint_state.header.stamp = rospy.Time.now()
+        robot_joint_state.state.joint_state.name = self.ik_solver.joint_names
+        
+        return robot_joint_state
+
     def getFingerValue(self):
         if not rospy.is_shutdown():
             js = rospy.wait_for_message('joint_states', JointState)
@@ -74,19 +139,13 @@ class Fetch_Robot():
 
         r = rospy.Rate(10)
         last_value = self.getFingerValue()
-        stablenum = 0
         while not rospy.is_shutdown():
             self.traj.header.stamp = rospy.Time.now()
             self.gripper_publisher.publish(self.traj)
             r.sleep()
-            # print "error ", abs(last_value - self.getFingerValue()) 
-            if abs(last_value - self.getFingerValue()) < 0.0001:
-                stablenum+=1
-            else:
-                stablenum = 0
-            if stablenum == 5 or abs(pt.positions[0] - self.getFingerValue()) < 0.0001:
+            if self.getFingerValue() > 0.036:
+                last_value = self.getFingerValue()
                 break
-            last_value = self.getFingerValue()
         return last_value
             
 
@@ -237,6 +296,22 @@ class Fetch_Robot():
             if len(attached_objects.keys()) == 0:
                 break
             second = rospy.get_time()
+
+    def addViewBox(self):
+        object_pose = PoseStamped()
+        object_pose.header.frame_id = self.robot.get_planning_frame()
+        object_pose.pose.position.x = 0.37
+        object_pose.pose.position.y = 0
+        object_pose.pose.position.z = 0.9
+
+        object_pose.pose.orientation.x = 0
+        object_pose.pose.orientation.y = 0
+        object_pose.pose.orientation.z = 0
+        object_pose.pose.orientation.w = 1
+        self.scene.add_box(self.viewboxname, object_pose,size=(0.2,0.1,0.32))
+
+    def removeViewBox(self):
+        self.scene.remove_world_object(self.viewboxname)
             
     def addManipulatedObject(self, objectname, x, y, z, rx, ry, rz, rw, filename):
         touch_links = self.robot.get_link_names(group=self.group_name)
@@ -286,7 +361,10 @@ class Fetch_Robot():
         self.group.stop()
         self.group.clear_pose_targets()
 
-    def planto_pose(self, trans, rotation):
+    def planto_pose(self, pose):
+        trans, rotation = pose
+        current_endeffector = self.group.get_end_effector_link()
+        self.group.set_end_effector_link("gripper_link")
         pose_goal = Pose()
         pose_goal.orientation.x = rotation[0]
         pose_goal.orientation.y = rotation[1]
@@ -299,6 +377,7 @@ class Fetch_Robot():
         
         plan = self.group.plan()
         self.group.clear_pose_targets()
+        self.group.set_end_effector_link(current_endeffector)
         return plan
 
     def execute_plan(self, plan):
@@ -357,3 +436,13 @@ class Fetch_Robot():
         display_trajectory.trajectory.append(plan)
         # Publish
         display_trajectory_publisher.publish(display_trajectory)
+
+    def display_place_robot_state(self, state):
+        state.state.joint_state.header.stamp = rospy.Time.now()
+
+        self.display_place_robot_state_publisher.publish(state)
+
+    def display_pick_robot_state(self, state):
+        state.state.joint_state.header.stamp = rospy.Time.now()
+
+        self.display_pick_robot_state_publisher.publish(state)

@@ -58,6 +58,11 @@ def getMatrixFromQuaternionAndTrans(quaternion_array, trans_array):
     poseMatrix[2,3] = trans_array.z
     return poseMatrix
 
+def getTransformFromPoseMat(pose_mat):
+    rotation = tf.transformations.quaternion_from_matrix(pose_mat) # this function takes 4*4 matrix
+    translation = [pose_mat[0,3], pose_mat[1,3], pose_mat[2,3]]
+    return (translation, rotation)
+
 class TF_Helper():
     def __init__(self):
         self.listener = tf.TransformListener()
@@ -78,3 +83,9 @@ class TF_Helper():
         pose.orientation.y = rot[1]
         pose.orientation.z = rot[2]
         pose.orientation.w = rot[3]
+
+    def getPoseMat(self, parent_link, child_link):
+        trans, rot = self.getTransform(parent_link, child_link)
+        trans_mat = tf.transformations.translation_matrix(trans)
+        rot_mat = tf.transformations.quaternion_matrix(rot)
+        return np.dot(trans_mat, rot_mat)

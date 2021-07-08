@@ -15,6 +15,8 @@ import pandaplotutils.pandageom as pandageom
 import trimesh
 from utils import collisiondetection as cd
 from utils import dbcvt as dc
+from utils import robotmath as rm
+from pandaplotutils import pandageom as pg
 import matplotlib.pyplot as plt
 from matplotlib import collections as mc
 from database import dbaccess as db
@@ -27,6 +29,7 @@ class RegripPlanner():
         self.facets, self.facetnormals = self.objtrimesh.facets_over(faceangle=.95, segangle = .95)
         self.objgeom = pandageom.packpandageom(self.objtrimesh.vertices, self.objtrimesh.face_normals, self.objtrimesh.faces)
 
+        self.handpkg = handpkg
         self.handname = handpkg.getHandName()
         self.hand = handpkg.newHandNM(hndcolor=[0,1,0,.8])
 
@@ -133,6 +136,22 @@ class RegripPlanner():
             result.append(path[1:-1])
         return result
 
+    # get the grasp pose of grasp ids under specific placement
+    def getGrasps(self, placementid, graspids):
+        results = []
+        for i in graspids:
+            sql = "SELECT freeairgrip.rotmat FROM freetabletopgrip, freeairgrip WHERE \
+                    freetabletopgrip.idfreeairgrip = freeairgrip.idfreeairgrip AND \
+                    freetabletopgrip.idfreetabletopplacement=%d AND freetabletopgrip.idfreeairgrip=%d" % (placementid, i)
+            result = dc.strToMat4(self.gdb.execute(sql)[0][0])
+            result = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * result
+            # need to convert it bakc to normal metrics
+            results.append(np.array([[result[0][0],result[1][0],result[2][0],result[3][0]/1000.0], \
+                                     [result[0][1],result[1][1],result[2][1],result[3][1]/1000.0], \
+                                     [result[0][2],result[1][2],result[2][2],result[3][2]/1000.0], \
+                                     [result[0][3],result[1][3],result[2][3],result[3][3]]]))
+        return results
+
     def getPlacements(self, placementids):
         results = []
         for i in placementids:
@@ -169,15 +188,115 @@ class RegripPlanner():
 
     def showHand(self, hndjawwidth, hndrotmat, base):
 
-        if self.handtmp == None:
-            self.handtmp = fetch_grippernm.Fetch_gripperNM(hndcolor=[0, 1, 0, .5])
-            self.handtmp.setMat(pandanpmat4=hndrotmat)
-            self.handtmp.setJawwidth(hndjawwidth)
-            self.handtmp.reparentTo(base.render)
+        # if self.handtmp == None:
+        self.handtmp = fetch_grippernm.Fetch_gripperNM(hndcolor=[0, 1, 0, .5])
+        self.handtmp.setMat(pandanpmat4=hndrotmat)
+        self.handtmp.setJawwidth(hndjawwidth)
+        self.handtmp.reparentTo(base.render)
+        # else:
+        #     self.handtmp.setMat(pandanpmat4=hndrotmat)
+        #     self.handtmp.setJawwidth(hndjawwidth)
 
-        else:
-            self.handtmp.setMat(pandanpmat4=hndrotmat)
-            self.handtmp.setJawwidth(hndjawwidth)
+    def findCommandGrasp(self, placement_1_id, placement_2_id):
+
+        commonids = []
+        sql =  "SELECT freeairgrip.idfreeairgrip FROM freeairgrip WHERE \
+                    freeairgrip.idfreeairgrip IN (SELECT freetabletopgrip.idfreeairgrip FROM freetabletopgrip WHERE freetabletopgrip.idfreetabletopplacement=%d) \
+                    AND \
+                    freeairgrip.idfreeairgrip IN (SELECT freetabletopgrip.idfreeairgrip FROM freetabletopgrip WHERE freetabletopgrip.idfreetabletopplacement=%d) \
+                    " % (placement_1_id, placement_2_id)
+        result = self.gdb.execute(sql)
+        for r in result:
+            commonids.append(int(r[0]))
+        return commonids
+        
+        
+        # objrotmat = self.tpsmat4s[placement_1_id-1]
+        # objrotmat.setCell(3,0,-300)
+
+        # # show object
+        # geom = pg.packpandageom(self.objtrimesh.vertices,
+        #                         self.objtrimesh.face_normals,
+        #                         self.objtrimesh.faces)
+        # node = GeomNode('obj')
+        # node.addGeom(geom)
+        # star = NodePath('obj')
+        # star.attachNewNode(node)
+
+        # star.setTransparency(TransparencyAttrib.MAlpha)
+        # star.setMat(objrotmat)
+        # star.reparentTo(base.render)
+
+        # sql = "SELECT freetabletopgrip.rotmat, freetabletopgrip.jawwidth, freetabletopgrip.idfreeairgrip FROM freetabletopgrip WHERE freetabletopgrip.idfreetabletopplacement=%d" % placement_1_id
+        # result = self.gdb.execute(sql)
+
+        # handRot = []
+        # handWidth = []
+        # gripid = []
+        # for r in result:
+        #     handRot.append(dc.strToMat4(r[0]))
+        #     handWidth.append(float(r[1]))
+        #     gripid.append(r[2])
+
+        # print "grip ids"
+        # print gripid
+
+        # # # show the gripers
+        # for j in range(len(handRot)):
+        #     hndrotmat = handRot[j]
+        #     hndrotmat.setCell(3,0,-300)
+        #     hndjawwidth = handWidth[j]
+        #     # show grasps
+        #     tmphnd = self.handpkg.newHandNM(hndcolor=[0, 1, 0, .5])
+        #     tmphnd.setMat(pandanpmat4 = hndrotmat)
+        #     tmphnd.setJawwidth(hndjawwidth)
+        #     # tmphnd.setJawwidth(0)
+        #     # tmprtq85.setJawwidth(80)
+        #     tmphnd.reparentTo(base.render)
+
+        # objrotmat = self.tpsmat4s[placement_2_id-1]
+        # objrotmat.setCell(3,0,300)
+
+        # # show object
+        # geom = pg.packpandageom(self.objtrimesh.vertices,
+        #                         self.objtrimesh.face_normals,
+        #                         self.objtrimesh.faces)
+        # node = GeomNode('obj')
+        # node.addGeom(geom)
+        # star = NodePath('obj')
+        # star.attachNewNode(node)
+
+        # star.setTransparency(TransparencyAttrib.MAlpha)
+        # star.setMat(objrotmat)
+        # star.reparentTo(base.render)
+        
+        # sql = "SELECT freetabletopgrip.rotmat, freetabletopgrip.jawwidth, freetabletopgrip.idfreeairgrip FROM freetabletopgrip WHERE freetabletopgrip.idfreetabletopplacement=%d" % placement_2_id
+        # result = self.gdb.execute(sql)
+
+        # handRot = []
+        # handWidth = []
+        # gripid = []
+
+        # for r in result:
+        #     handRot.append(dc.strToMat4(r[0]))
+        #     handWidth.append(float(r[1]))
+        #     gripid.append(r[2])
+
+        # print "grip ids"
+        # print gripid
+
+        # # # show the gripers
+        # for j in range(len(handRot)):
+        #     hndrotmat = handRot[j]
+        #     hndrotmat.setCell(3,0,300)
+        #     hndjawwidth = handWidth[j]
+        #     # show grasps
+        #     tmphnd = self.handpkg.newHandNM(hndcolor=[0, 1, 0, .5])
+        #     tmphnd.setMat(pandanpmat4 = hndrotmat)
+        #     tmphnd.setJawwidth(hndjawwidth)
+        #     # tmphnd.setJawwidth(0)
+        #     # tmprtq85.setJawwidth(80)
+        #     tmphnd.reparentTo(base.render)
         
 
 
@@ -204,6 +323,15 @@ if __name__=='__main__':
     planner.addStartGrasp(starthandwidth, startpose)
 
     placementsequence = planner.searchPath()
+    print "placement sequence ", placementsequence
+
+    planner.showPlacementSequence(placementsequence[0], base)
+
+    # planner.findCommandGrasp(placementsequence[0][0], placementsequence[0][1])
+    commongraspids = planner.findCommandGrasp(4, 5)
+    currentgrasppose = planner.getGrasps(4, commongraspids)
+    print "current grasp poses"
+    print currentgrasppose
 
     # show the regrasp graph
     # nx.draw(planner.regg, with_labels=True)
