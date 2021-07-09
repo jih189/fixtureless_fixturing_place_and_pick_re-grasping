@@ -374,6 +374,8 @@ if __name__=='__main__':
             # need to open the gripper and move the gripper away from the object
             robot.openGripper()
 
+            raw_input("wait for gripper open")
+
             # get current gripper pose in cartisian motion base
             gripper_pose = tf_helper.getTransform('/torso_lift_link', '/gripper_link')
             # open gripper and unattanch the object from the end-effector

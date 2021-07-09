@@ -17,6 +17,8 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sensor_msgs.msg import JointState
 from trac_ik_python.trac_ik import IK
 import random
+import actionlib
+from control_msgs.msg import JointTrajectoryAction, JointTrajectoryGoal, FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 
 class Fetch_Robot():
     def __init__(self):
@@ -38,7 +40,15 @@ class Fetch_Robot():
         self.display_place_robot_state_publisher = rospy.Publisher('/move_group/display_place_robot_state', moveit_msgs.msg.DisplayRobotState, queue_size=10)
         self.display_pick_robot_state_publisher = rospy.Publisher('/move_group/display_pick_robot_state', moveit_msgs.msg.DisplayRobotState, queue_size=10)
         self.cartesian_motion_controller_publisher = rospy.Publisher('my_cartesian_motion_controller/target_frame', PoseStamped, queue_size=5)
-        self.gripper_publisher = rospy.Publisher('gripper_controller/command', JointTrajectory, queue_size=5)
+        # self.gripper_publisher = rospy.Publisher('gripper_controller/command', JointTrajectory, queue_size=5)
+        self.joint_names = ['r_gripper_finger_joint']
+        self.open_joints = [0.04]
+        self.close_joints = [-0.04]
+        self.client = actionlib.SimpleActionClient("/gripper_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
+
+        rospy.loginfo('Waiting for joint trajectory action')    
+        self.client.wait_for_server()
+        rospy.loginfo('Found joint trajectory action!')
 
         planning_frame = self.group.get_planning_frame()
         print "=========== Reference frame:%s" % planning_frame
@@ -63,8 +73,8 @@ class Fetch_Robot():
         # used to get current robot state
         self.tf_listener = tf.TransformListener()
 
-        self.traj = JointTrajectory()
-        self.traj.joint_names = ['r_gripper_finger_joint']
+        # self.traj = JointTrajectory()
+        # self.traj.joint_names = ['r_gripper_finger_joint']
 
         self.ik_solver = IK('torso_lift_link', 'gripper_link')
 
@@ -132,45 +142,60 @@ class Fetch_Robot():
             return None
 
     def openGripper(self):
-        pt = JointTrajectoryPoint()
-        pt.positions = [0.04]
-        pt.time_from_start = rospy.Duration(1.0)
-        self.traj.points = [pt]
+        # pt = JointTrajectoryPoint()
+        # pt.positions = [0.04]
+        # pt.time_from_start = rospy.Duration(1.0)
+        # self.traj.points = [pt]
 
-        r = rospy.Rate(10)
-        last_value = self.getFingerValue()
-        while not rospy.is_shutdown():
-            self.traj.header.stamp = rospy.Time.now()
-            self.gripper_publisher.publish(self.traj)
-            r.sleep()
-            if self.getFingerValue() > 0.036:
-                last_value = self.getFingerValue()
-                break
-        return last_value
+        # r = rospy.Rate(10)
+        # last_value = self.getFingerValue()
+        # while not rospy.is_shutdown():
+        #     self.traj.header.stamp = rospy.Time.now()
+        #     self.gripper_publisher.publish(self.traj)
+        #     r.sleep()
+        #     if self.getFingerValue() > 0.036:
+        #         last_value = self.getFingerValue()
+        #         break
+        # return last_value
+
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.joint_names = self.joint_names
+        point = JointTrajectoryPoint()
+        point.positions = self.open_joints
+        point.time_from_start = rospy.Duration(1)
+        goal.trajectory.points.append(point)
+        self.client.send_goal_and_wait(goal)
             
 
     def closeGripper(self):
-        pt = JointTrajectoryPoint()
-        pt.positions = [-0.04]
-        pt.time_from_start = rospy.Duration(1.0)
-        self.traj.points = [pt]
+        # pt = JointTrajectoryPoint()
+        # pt.positions = [-0.02]
+        # pt.time_from_start = rospy.Duration(1.0)
+        # self.traj.points = [pt]
 
-        r = rospy.Rate(10)
-        last_value = self.getFingerValue()
-        stablenum = 0
-        while not rospy.is_shutdown():
-            self.traj.header.stamp = rospy.Time.now()
-            self.gripper_publisher.publish(self.traj)
-            r.sleep()
-            # print "error ", abs(last_value - self.getFingerValue()) 
-            if abs(last_value - self.getFingerValue()) < 0.0001:
-                stablenum+=1
-            else:
-                stablenum = 0
-            if stablenum == 5 or abs(pt.positions[0] - self.getFingerValue()) < 0.0001:
-                break
-            last_value = self.getFingerValue()
-        return last_value
+        # r = rospy.Rate(10)
+        # last_value = self.getFingerValue()
+        # stablenum = 0
+        # while not rospy.is_shutdown():
+        #     self.traj.header.stamp = rospy.Time.now()
+        #     self.gripper_publisher.publish(self.traj)
+        #     r.sleep()
+        #     # print "error ", abs(last_value - self.getFingerValue()) 
+        #     if abs(last_value - self.getFingerValue()) < 0.0001:
+        #         stablenum+=1
+        #     else:
+        #         stablenum = 0
+        #     if stablenum == 5 or abs(pt.positions[0] - self.getFingerValue()) < 0.0001:
+        #         break
+        #     last_value = self.getFingerValue()
+        # return last_value
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.joint_names = self.joint_names
+        point = JointTrajectoryPoint()
+        point.positions = self.close_joints
+        point.time_from_start = rospy.Duration(1)
+        goal.trajectory.points.append(point)
+        self.client.send_goal_and_wait(goal)
 
     def setErrorThreshold(self, transThreshold, rotThreshold):
         self.transThreshold = transThreshold

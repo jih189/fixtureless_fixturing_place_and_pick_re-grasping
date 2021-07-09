@@ -33,7 +33,7 @@ except:
 
     import time
 
-def moveObjectTo(cid, objectname, targetposition, targetquaternion):
+def moveObjectTo(clientID, objectname, targetposition, targetquaternion):
     ret, objecthandle = sim.simxGetObjectHandle(clientID, objectname, sim.simx_opmode_oneshot_wait)
     if ret == sim.simx_return_ok:
         _, position = sim.simxGetObjectPosition(clientID, objecthandle, -1, sim.simx_opmode_blocking)
@@ -80,79 +80,79 @@ class Arm:
 
 class Gripper:
     def __init__(self):
-        self.traj = JointTrajectory()
-        self.traj.joint_names = ['r_gripper_finger_joint']
-        self.gripper_publisher = rospy.Publisher('gripper_controller/command', JointTrajectory, queue_size=5)
-        # self.joint_names = ['r_gripper_finger_joint']
-        # self.open_joints = [0.04]
-        # self.close_joints = [-0.04]
-        # self.client = actionlib.SimpleActionClient("/gripper_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
+        # self.traj = JointTrajectory()
+        # self.traj.joint_names = ['r_gripper_finger_joint']
+        # self.gripper_publisher = rospy.Publisher('gripper_controller/command', JointTrajectory, queue_size=5)
+        self.joint_names = ['r_gripper_finger_joint']
+        self.open_joints = [0.04]
+        self.close_joints = [-0.04]
+        self.client = actionlib.SimpleActionClient("/gripper_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
 
-        # rospy.loginfo('Waiting for joint trajectory action')    
-        # self.client.wait_for_server()
-        # rospy.loginfo('Found joint trajectory action!')
+        rospy.loginfo('Waiting for joint trajectory action')    
+        self.client.wait_for_server()
+        rospy.loginfo('Found joint trajectory action!')
 
-    def getFingerValue(self):
-        if not rospy.is_shutdown():
-            js = rospy.wait_for_message('joint_states', JointState)
-            # get index of finger
-            index = js.name.index('r_gripper_finger_joint')
-            return js.position[index]
-        else:
-            return None
+    # def getFingerValue(self):
+    #     if not rospy.is_shutdown():
+    #         js = rospy.wait_for_message('joint_states', JointState)
+    #         # get index of finger
+    #         index = js.name.index('r_gripper_finger_joint')
+    #         return js.position[index]
+    #     else:
+    #         return None
 
     def open(self):
-        pt = JointTrajectoryPoint()
-        pt.positions = [0.04]
-        pt.time_from_start = rospy.Duration(1.0)
-        self.traj.points = [pt]
+        # pt = JointTrajectoryPoint()
+        # pt.positions = [0.04]
+        # pt.time_from_start = rospy.Duration(1.0)
+        # self.traj.points = [pt]
 
-        r = rospy.Rate(10)
-        while not rospy.is_shutdown():
-            self.traj.header.stamp = rospy.Time.now()
-            self.gripper_publisher.publish(self.traj)
-            r.sleep()
-            if self.getFingerValue() > 0.036:
-                break
-        # goal = FollowJointTrajectoryGoal()
-        # goal.trajectory.joint_names = self.joint_names
-        # point = JointTrajectoryPoint()
-        # point.positions = self.open_joints
-        # point.time_from_start = rospy.Duration(1)
-        # goal.trajectory.points.append(point)
-        # self.client.send_goal_and_wait(goal)
+        # r = rospy.Rate(10)
+        # while not rospy.is_shutdown():
+        #     self.traj.header.stamp = rospy.Time.now()
+        #     self.gripper_publisher.publish(self.traj)
+        #     r.sleep()
+        #     if self.getFingerValue() > 0.036:
+        #         break
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.joint_names = self.joint_names
+        point = JointTrajectoryPoint()
+        point.positions = self.open_joints
+        point.time_from_start = rospy.Duration(3)
+        goal.trajectory.points.append(point)
+        self.client.send_goal_and_wait(goal)
     
     def close(self):
-        pt = JointTrajectoryPoint()
-        pt.positions = [-0.04]
-        pt.time_from_start = rospy.Duration(1.0)
-        self.traj.points = [pt]
+        # pt = JointTrajectoryPoint()
+        # pt.positions = [-0.04]
+        # pt.time_from_start = rospy.Duration(1.0)
+        # self.traj.points = [pt]
 
-        r = rospy.Rate(10)
-        last_value = self.getFingerValue()
-        stablenum = 0
-        while not rospy.is_shutdown():
-            self.traj.header.stamp = rospy.Time.now()
-            self.gripper_publisher.publish(self.traj)
-            r.sleep()
-            # print "error ", abs(last_value - self.getFingerValue()) 
-            if abs(last_value - self.getFingerValue()) < 0.0001:
-                stablenum+=1
-            else:
-                stablenum = 0
-            if stablenum == 5 or abs(pt.positions[0] - self.getFingerValue()) < 0.0001:
-                break
-            last_value = self.getFingerValue()
-        return last_value
-        # goal = FollowJointTrajectoryGoal()
-        # goal.trajectory.joint_names = self.joint_names
-        # point = JointTrajectoryPoint()
-        # point.positions = self.close_joints
-        # point.time_from_start = rospy.Duration(1)
-        # goal.trajectory.points.append(point)
-        # self.client.send_goal_and_wait(goal)
+        # r = rospy.Rate(10)
+        # last_value = self.getFingerValue()
+        # stablenum = 0
+        # while not rospy.is_shutdown():
+        #     self.traj.header.stamp = rospy.Time.now()
+        #     self.gripper_publisher.publish(self.traj)
+        #     r.sleep()
+        #     # print "error ", abs(last_value - self.getFingerValue()) 
+        #     if abs(last_value - self.getFingerValue()) < 0.0001:
+        #         stablenum+=1
+        #     else:
+        #         stablenum = 0
+        #     if stablenum == 5 or abs(pt.positions[0] - self.getFingerValue()) < 0.0001:
+        #         break
+        #     last_value = self.getFingerValue()
+        # return last_value
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.joint_names = self.joint_names
+        point = JointTrajectoryPoint()
+        point.positions = self.close_joints
+        point.time_from_start = rospy.Duration(1)
+        goal.trajectory.points.append(point)
+        self.client.send_goal_and_wait(goal)
 
-def resetEnv(arm, gripper):
+def resetEnv(clientID, arm, gripper):
     # move the robot (need to search how to do)
     # moveObjectTo(clientID, "base_link_respondable", [-0.011241, -0.65001, 0.18444], [-9.568027599016204e-05, -0.7104805111885071, 0.003217362565919757, 0.7037094831466675])
 
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     sim.simxFinish(-1) # just in case, close all opened connections
     clientID=sim.simxStart('127.0.0.1',19999,True,True,5000,5) # Connect to CoppeliaSim
     if clientID!=-1:
-        resetEnv(arm , gripper)
+        resetEnv(clientID, arm , gripper)
 
         # Now close the connection to CoppeliaSim:
         sim.simxFinish(clientID)
