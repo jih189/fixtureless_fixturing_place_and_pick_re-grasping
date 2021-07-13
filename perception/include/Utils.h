@@ -129,6 +129,8 @@ float rotationGeodesicDistance(const Eigen::Matrix3f &R1, const Eigen::Matrix3f 
 Eigen::Quaternionf averageQuaternions(const std::vector<Eigen::Quaternionf> &qs) ;
 template<class PointT>
 void convert3dOrganizedRGB(cv::Mat &objDepth, cv::Mat &colImage, Eigen::Matrix3f &camIntrinsic, boost::shared_ptr<pcl::PointCloud<PointT>> objCloud);
+template<class PointT>
+void convert2dDepth(boost::shared_ptr<pcl::PointCloud<PointT>> objCloud, Eigen::Matrix3f &camIntrinsic, cv::Mat &objDepth);
 void readDepthImage(cv::Mat &depthImg, std::string path);
 void writeDepthImage(cv::Mat &depthImg, std::string path);
 void transformPolygonMesh(pcl::PolygonMesh::Ptr mesh_in, pcl::PolygonMesh::Ptr mesh_out, Eigen::Matrix4f transform);

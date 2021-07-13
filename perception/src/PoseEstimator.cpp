@@ -359,7 +359,6 @@ class CompareWrongRatio
 };
 
 
-
 template<class PointT>
 void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand)
 {
@@ -431,13 +430,13 @@ void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand
           float sim = depth_sims[i].at<float>(h, w);
           float real = depth_meters.at<float>(h, w);
           float diff = 0;
-          if ((real <= 0.1 || real >= 2.0) && (sim > 0.1 || sim < 2.0))
+          if ((real <= 0.1 || real >= 2.0) && (sim > 0.1 && sim < 2.0))
           {
-            diff = 2.0;
+            diff = 5.0;
           }
-          else if ((sim <= 0.1 || sim >= 2.0) && (real > 0.1 || real < 2.0))
+          else if ((sim <= 0.1 || sim >= 2.0) && (real > 0.1 && real < 2.0))
           {
-            diff = 2.0;
+            diff = 1.0;
           }
           else
           {
@@ -482,7 +481,7 @@ void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand
 }
 
 template<class PointT>
-void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo)
+void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo, HandT42 *hand)
 {
   best_hypo = _pose_hypos[0];
   float best_lcp = 0;
@@ -515,6 +514,53 @@ void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo)
       }
     }
   }
+
+  // render the best
+  const int H = 480, W = 640;
+  PointCloud::Ptr cloud_tmp(new PointCloud);
+  pcl::fromPCLPointCloud2(_obj_mesh->cloud, *cloud_tmp);
+  PointCloudRGB::Ptr cloud_color(new PointCloudRGB);
+  pcl::copyPointCloud(*cloud_tmp, *cloud_color);
+  for (auto &pt : cloud_color->points)
+  {
+    pt.r = 0;
+    pt.g = 0;
+    pt.b = 255;
+  }
+  pcl::toPCLPointCloud2(*cloud_color, _obj_mesh->cloud);
+  _renderer.clearScene();
+  for (const auto &h : hand->_meshes)
+  {
+    std::string name = h.first;
+    if (hand->_component_status[name] == false)
+      continue;
+    Eigen::Matrix4f tf_in_base;
+    hand->getTFHandBase(name, tf_in_base);
+    PointCloud::Ptr cloud_tmp(new PointCloud);
+    pcl::fromPCLPointCloud2(h.second->cloud, *cloud_tmp);
+    PointCloudRGB::Ptr cloud_color(new PointCloudRGB);
+    pcl::copyPointCloud(*cloud_tmp, *cloud_color);
+    for (auto &pt : cloud_color->points)
+    {
+      pt.r = 255;
+      pt.g = 0;
+      pt.b = 0;
+    }
+    pcl::toPCLPointCloud2(*cloud_color, h.second->cloud);
+    _renderer.addObject(h.second, hand->_handbase_in_cam * tf_in_base);
+  }
+
+  cv::Mat depth_sim, color_sim;
+
+  Eigen::Matrix4f model2scene = best_hypo._pose;
+  _renderer.addObject(_obj_mesh, model2scene);
+  _renderer.doRender(Eigen::Matrix4d::Identity(), depth_sim, color_sim);
+  _renderer.removeLastObject();
+
+  ROS_INFO_STREAM("error rate of best = " << best_hypo._wrong_ratio);
+
+  cv::imshow("color", color_sim);
+  cv::waitKey(6);
 
   // best_hypo.print();
 

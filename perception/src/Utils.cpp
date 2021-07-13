@@ -71,6 +71,63 @@ void writeDepthImage(cv::Mat &depthImg, std::string path)
   cv::imwrite(path, depthImgRaw);
 }
 
+/********************************* function: convert2dDepth<pcl::PointXYZRGB> *************************************
+colImage: 8UC3
+objDepth: 16UC1
+	*******************************************************************************************************/
+template<class PointT>
+void convert2dDepth(boost::shared_ptr<pcl::PointCloud<PointT>> objCloud, Eigen::Matrix3f &camIntrinsic, cv::Mat &objDepth)
+{
+  objDepth.setTo(0.0);
+  if(objCloud->isOrganized()){
+    const int imgWidth = objCloud->width;//objDepth.cols;
+    const int imgHeight = objCloud->height;//objDepth.rows;
+    for (int u = 0; u < imgHeight; u++)
+      for (int v = 0; v < imgWidth; v++)
+        if ( !pcl_isfinite(objCloud->at(v, u).x) ||
+             !pcl_isfinite(objCloud->at(v, u).y) ||
+             !pcl_isfinite(objCloud->at(v, u).z))
+          continue;
+        else
+          objDepth.at<float>(u, v) = objCloud->at(v, u).z;
+  }
+  else{
+    ROS_ERROR("the objCloud must be organized!!!");
+    // const int imgWidth = objDepth.cols;
+    // const int imgHeight = objDepth.rows;
+    // for (auto pt:objCloud->points)
+    // {
+
+    //   int u = camIntrinsic(0,0)*pt.x/pt.z + camIntrinsic(0,2);
+    //   int v = camIntrinsic(1,1)*pt.y/pt.z + camIntrinsic(1,2);
+
+    //   if (u<0 || u>=imgWidth || v<0 || v>=imgHeight)
+    //   {
+    //     continue;
+    //   }
+    //   if (objDepth.at<float>(v,u)==0)
+    //   {
+    //     objDepth.at<float>(v,u) = pt.z;
+    //   }
+    //   else
+    //   {
+    //     if (pt.z < objDepth.at<float>(v,u))
+    //     {
+    //       objDepth.at<float>(v,u) = pt.z;
+    //     }
+    //   }
+    // }
+  }
+
+
+
+
+
+}
+template void convert2dDepth(boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGB>> objCloud, Eigen::Matrix3f &camIntrinsic, cv::Mat &objDepth);
+template void convert2dDepth(boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBNormal>> objCloud, Eigen::Matrix3f &camIntrinsic, cv::Mat &objDepth);
+
+
 /********************************* function: convert3dOrganizedRGB<pcl::PointXYZRGB> *************************************
 colImage: 8UC3
 objDepth: 16UC1

@@ -195,6 +195,8 @@ if __name__=='__main__':
       print "fail to detect the object"
       foundObject = False
 
+   raw_input("check")
+
    ## stop the tracker
    objectSearcherTrigger(False, 0, Pose())
 
@@ -268,8 +270,8 @@ if __name__=='__main__':
                rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
 
                ## calculate the gripper pose on table
-               place_pose_in_table = rotationInZ.dot(current_place).dot(hand_grasp_pose)
-               place_pose_tmp = base_link_in_torso_lift.dot(tablepos).dot(place_pose_in_table)
+               place_pose_in_table = rotationInZ.dot(current_place)
+               place_pose_tmp = base_link_in_torso_lift.dot(tablepos).dot(place_pose_in_table).dot(hand_grasp_pose)
                place_pose = getTransformFromPoseMat(place_pose_tmp)
                place_ik_result = robot.solve_ik_collision_free(place_pose, 300)
                # place_ik_result = robot.solve_ik(place_pose)
@@ -305,7 +307,7 @@ if __name__=='__main__':
             grasp_pose = transformProduct(torso_lift_in_base_link, grasp_pose)
 
             pre_place_pose = place_pose
-            pre_place_pose[0][2] += 0.03
+            pre_place_pose[0][2] += 0.05
             pre_grasp_pose = transformProduct(grasp_pose, [[-0.12,0,0],[0,0,0,1]])
 
             # print "place solution ", place_pose
@@ -325,45 +327,51 @@ if __name__=='__main__':
 
             raw_input("start to place!!")
 
-            ## need to update the object pose in hand
-            try:
-               # attand the object as a part of the arm
-               trans, rot = tf_helper.getTransform('/base_link', '/object')
-               robot.addManipulatedObject("object", trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3], "objects/cuboid.stl")
-            except:
-               print "fail to detect the object"
-               foundObject = False
-               break
-
             # place from pre-place to place with cartesian motion controller
             ## need to switch to cartesian motion controller
             robot.switchController('my_cartesian_motion_controller', 'arm_controller')
 
-            # get gripper pose for place in table frame
-            place_hand_in_table = getTransformFromPoseMat(place_pose_in_table)
-
             current_stamp = trackstamp - 1
 
             while not rospy.is_shutdown():
+
                if current_stamp < trackstamp:
                   current_stamp += 1
+
+                  # attand the object as a part of the arm
+                  trans, rot = tf_helper.getTransform('/base_link', '/object')
+                  robot.addManipulatedObject("object", trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3], "objects/cuboid.stl")
+                  
+                  # update the table pose
+                  # trans, rot = tf_helper.getTransform('/base_link', '/predicted_table_center')
+                  # robot.addCollisionTable("table", trans[0], trans[1], trans[2], \
+                  #    rot[0], rot[1], rot[2], rot[3], \
+                  #    tableresult.width, tableresult.depth, tableresult.height)
+
+                  trans, rot = tf_helper.getTransform('/object', '/predicted_hand')
+                  current_hand_grasp_pose = tf.TransformerROS().fromTranslationRotation(trans, rot)
+
+                  # get gripper pose for place in table frame
+                  place_hand_in_table = getTransformFromPoseMat(place_pose_in_table.dot(current_hand_grasp_pose))
 
                   # get current gripper pose in cartisian motion base
                   gripper_pose = tf_helper.getTransform('/torso_lift_link', '/gripper_link')
 
                   # get the current table relate to the hand
-                  predicted_table_in_hand = tf_helper.getTransform('/predicted_hand', '/predicted_table')
+                  predicted_table_place_in_hand = tf_helper.getTransform('/predicted_hand', '/predicted_table_place')
 
-                  predict_place = transformProduct(predicted_table_in_hand, place_hand_in_table)
+                  predict_place = transformProduct(predicted_table_place_in_hand, place_hand_in_table)
                   targetposition, targetorientation = transformProduct(gripper_pose, predict_place)
 
                   if(robot.moveToFrame(targetposition, targetorientation)):
                      break
+                  
                   rospy.sleep(0.05)
                   # trans_error, rot_error = robot.getError()
                   # print "error trans ", trans_error, " rot ", rot_error
                else:
                   rospy.sleep(1.0)
+
             objectSearcherTrigger(False, 0, Pose())
 
             raw_input("finish place")
@@ -373,8 +381,6 @@ if __name__=='__main__':
 
             # need to open the gripper and move the gripper away from the object
             robot.openGripper()
-
-            raw_input("wait for gripper open")
 
             # get current gripper pose in cartisian motion base
             gripper_pose = tf_helper.getTransform('/torso_lift_link', '/gripper_link')
