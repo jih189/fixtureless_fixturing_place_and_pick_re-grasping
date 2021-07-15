@@ -443,6 +443,10 @@ void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand
           float sim = depth_sims[i].at<float>(h, w);
           float real = depth_meters.at<float>(h, w);
           float diff = 0;
+
+          if((sim > 0.1 && sim < 2.0) && color_sims[i].at<cv::Vec3b>(h, w)[2] == 255)
+            continue;
+
           if ((real <= 0.1 || real >= 2.0) && (sim > 0.1 && sim < 2.0))
           {
             diff = 2.0;
@@ -453,7 +457,7 @@ void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand
           }
           else
           {
-            diff = std::abs(sim - real);
+            diff = 2.0 * std::abs(sim - real);
           }
 
           if (color_sims[i].at<cv::Vec3b>(h, w)[0] == 255) //object part is blue
@@ -513,6 +517,9 @@ void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo, HandT42 *hand)
   best_hypo = _pose_hypos[0];
   float best_lcp = 0;
 
+  PoseHypo best_hypo_w(-1);
+  float l_weight = 1000.0;
+
   const float lcp_dist = cfg->yml["lcp"]["dist"].as<float>();
   const float normal_angle = cfg->yml["lcp"]["normal_angle"].as<float>();
   const float wrong_ratio_threhold = cfg->yml["wrong_ratio_threhold"].as<float>();
@@ -539,6 +546,10 @@ void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo, HandT42 *hand)
       {
         best_hypo = _pose_hypos[i];
         best_lcp = lcp;
+      }
+      if(_pose_hypos[i]._wrong_ratio < l_weight){
+        best_hypo_w = _pose_hypos[i];
+        l_weight = _pose_hypos[i]._wrong_ratio;
       }
     }
   }
@@ -580,14 +591,31 @@ void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo, HandT42 *hand)
 
   cv::Mat depth_sim, color_sim;
 
-  Eigen::Matrix4f model2scene = best_hypo._pose;
+  Eigen::Matrix4f model2scene = best_hypo_w._pose;
   _renderer.addObject(_obj_mesh, model2scene);
   _renderer.doRender(Eigen::Matrix4d::Identity(), depth_sim, color_sim);
   _renderer.removeLastObject();
 
+  cv::Mat depth_meters = _depth_meters.clone();
+
+  for (int h = 0; h < H; h++)
+  {
+    for (int w = 0; w < W; w++)
+    {
+      float sim = depth_sim.at<float>(h, w);
+      float real = depth_meters.at<float>(h, w);
+      if((sim > 0.1 && sim < 2.0) && color_sim.at<cv::Vec3b>(h, w)[2] == 255)
+        depth_meters.at<float>(h, w) = 0.0;
+      else if((sim > 0.1 && sim < 2.0) && color_sim.at<cv::Vec3b>(h, w)[0] == 255)
+        depth_meters.at<float>(h, w) = 1.0;
+      // else if((real <= 0.1 || real >= 2.0) && (sim > 0.1 && sim < 2.0) && color_sim.at<cv::Vec3b>(h, w)[0] == 255)
+      //   depth_meters.at<float>(h, w) = 1.0;
+    }
+  }
+
   ROS_INFO_STREAM("error rate of best = " << best_hypo._wrong_ratio);
 
-  cv::imshow("color", color_sim);
+  cv::imshow("color", depth_meters);
   cv::waitKey(6);
 
   // best_hypo.print();

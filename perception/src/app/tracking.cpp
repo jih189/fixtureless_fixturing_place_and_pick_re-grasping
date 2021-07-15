@@ -71,7 +71,7 @@ class ParticleFilter{
       poses.push_back(poses_of_particle[maxWeightIndex]);
 
       for(int i = 1; i < numberOfParticles; i++){
-        poses.push_back(propagate(poses_of_particle[distribution(generator)], 0.05, 0.005));
+        poses.push_back(propagate(poses_of_particle[distribution(generator)], 0.04, 0.002));
       }
     }
 
@@ -563,7 +563,7 @@ int main(int argc, char **argv)
   HandT42 hand(&cfg, cfg.cam_intrinsic, 640, 480);
 
   // init particle filter
-  ParticleFilter partcile_filter(60);
+  ParticleFilter partcile_filter(100);
 
   ros::Rate loop_rate(10);
 
@@ -882,7 +882,7 @@ int main(int argc, char **argv)
 
       est.runUpdate(pose_particles);
       est.refineByICP();
-      est.clusterPoses(3, 0.002, true);
+      est.clusterPoses(2, 0.0005, true);
       est.rejectByCollisionOrNonTouching(&hand);
       est.rejectByRender(cfg.pose_estimator_wrong_ratio, &hand);
 
@@ -910,14 +910,6 @@ int main(int argc, char **argv)
 
         int maxWeightIndex = std::max_element(hypo_wrong_ratios.begin(), hypo_wrong_ratios.end()) - hypo_wrong_ratios.begin();
         model2scene = pose_particles[maxWeightIndex];
-        // PoseHypo best(-1);
-        // est.selectBest(best, &hand);
-        // model2scene = best._pose;
-
-        // printf("weights ");
-        // for(float itr : hypo_wrong_ratios)
-        //   printf(" %f ", itr);
-        // printf("\n");
 
         marker_helper.publishMarkers(pose_particles, hypo_wrong_ratios);
 
