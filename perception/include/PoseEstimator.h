@@ -17,8 +17,11 @@ public:
   void reset();
   void setCurScene(boost::shared_ptr<pcl::PointCloud<PointT> > scene, PointCloudRGBNormal::Ptr cloud_withouthand_raw, boost::shared_ptr<pcl::PointCloud<PointT> > object_segment, const cv::Mat &rgb, const cv::Mat &depth_meters);
   bool runSuper4pcs(const std::map<std::vector<int>, std::vector<std::pair<int, int> > > &ppfs, const Eigen::Matrix4f &init_pose);
+  bool runUpdate(std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &inputs);
   void refineByICP();
   void selectBest(PoseHypo &best_hypo, HandT42 *hand);
+  int getNumOfHypos();
+  void selectIndex(PoseHypo &selected_hypo, int index);
   void clusterPoses(float angle_diff, float dist_diff, bool assign_id);
   void projectCloudAndCompare(boost::shared_ptr<pcl::PointCloud<PointT> > cloud, cv::Mat &projection, float &wrong_ratio, int id);
   // void register(std::string dir, std::string name);

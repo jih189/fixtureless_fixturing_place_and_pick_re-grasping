@@ -60,6 +60,19 @@ void PoseEstimator<PointT>::reset()
 }
 
 template<class PointT>
+bool PoseEstimator<PointT>::runUpdate(std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &inputs){
+  _pose_hypos.clear();
+  _pose_hypos.reserve(inputs.size());
+
+  for (int i=0;i<inputs.size();i++)
+  {
+    _pose_hypos.push_back(PoseHypo(inputs[i], i, 1.0));
+  }
+
+  return true;
+}
+
+template<class PointT>
 bool PoseEstimator<PointT>::runSuper4pcs(const std::map<std::vector<int>, std::vector<std::pair<int, int> > > &ppfs, const Eigen::Matrix4f &init_pose)
 {
   pcl::Super4PCS<PointT,PointT> super4pcs;
@@ -432,11 +445,11 @@ void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand
           float diff = 0;
           if ((real <= 0.1 || real >= 2.0) && (sim > 0.1 && sim < 2.0))
           {
-            diff = 5.0;
+            diff = 2.0;
           }
           else if ((sim <= 0.1 || sim >= 2.0) && (real > 0.1 && real < 2.0))
           {
-            diff = 1.0;
+            diff = 2.0;
           }
           else
           {
@@ -468,16 +481,30 @@ void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand
   }
   int num_to_keep = std::max(static_cast<int>(cfg->yml["render_keep_hypo"].as<float>() * hypo_tmp.size()), 10); // Top ratio to keep
   num_to_keep = std::min(num_to_keep, static_cast<int>(hypo_tmp.size()));
+  // printf("wrong ratio in queue ");
   for (int i = 0; i < num_to_keep; i++)
   {
     if (Q.empty())
       break;
     PoseHypo p = Q.top();
+    // printf(" %f ", p._wrong_ratio);
+
     Q.pop();
     _pose_hypos.push_back(p);
   }
+  printf("\n");
   // printf("after projection check, #hypo=%d\n", _pose_hypos.size());
 
+}
+
+template<class PointT>
+int PoseEstimator<PointT>::getNumOfHypos(){
+  return _pose_hypos.size();
+}
+
+template<class PointT>
+void PoseEstimator<PointT>::selectIndex(PoseHypo &selected_hypo, int index){
+  selected_hypo = _pose_hypos[index];
 }
 
 template<class PointT>
@@ -488,6 +515,7 @@ void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo, HandT42 *hand)
 
   const float lcp_dist = cfg->yml["lcp"]["dist"].as<float>();
   const float normal_angle = cfg->yml["lcp"]["normal_angle"].as<float>();
+  const float wrong_ratio_threhold = cfg->yml["wrong_ratio_threhold"].as<float>();
 
 #pragma omp parallel
   {
@@ -507,7 +535,7 @@ void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo, HandT42 *hand)
       _pose_hypos[i]._lcp_score = lcp; // update lcp score
 
       #pragma omp critical
-      if (_pose_hypos[i]._lcp_score > best_lcp)
+      if (_pose_hypos[i]._wrong_ratio < wrong_ratio_threhold && _pose_hypos[i]._lcp_score > best_lcp)
       {
         best_hypo = _pose_hypos[i];
         best_lcp = lcp;

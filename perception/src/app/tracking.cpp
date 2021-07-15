@@ -9,6 +9,8 @@
 #include "PoseHypo.h"
 
 #include <ros/console.h>
+#include <visualization_msgs/MarkerArray.h>
+#include <visualization_msgs/Marker.h>
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
@@ -22,6 +24,10 @@
 
 #include <icra20_manipulation_pose/SearchObject.h>
 #include <rail_manipulation_msgs/SegmentObjects.h>
+#include <Eigen/StdVector>
+
+#include <random>
+#include <math.h>
 
 
 static const std::string TOPIC_NAME = "/head_camera/rgb/image_raw";
@@ -44,6 +50,71 @@ Eigen::Matrix4f predicted_pose_in_hand;
 bool isTracking;
 int actiontype;
 unsigned int trackstamp;
+
+class ParticleFilter{
+  public:
+    ParticleFilter(int numberOfParticles_input){
+      numberOfParticles = numberOfParticles_input;
+      poses.reserve(numberOfParticles);
+    }
+
+    void resample(std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &poses_of_particle, std::vector<float> &weights_of_particle){
+
+      int maxWeightIndex = std::max_element(weights_of_particle.begin(), weights_of_particle.end()) - weights_of_particle.begin();
+
+      std::random_device mch;
+      std::default_random_engine generator(mch());
+      std::discrete_distribution<int> distribution(weights_of_particle.begin(), weights_of_particle.end());
+
+      poses.clear();
+
+      poses.push_back(poses_of_particle[maxWeightIndex]);
+
+      for(int i = 1; i < numberOfParticles; i++){
+        poses.push_back(propagate(poses_of_particle[distribution(generator)], 0.05, 0.005));
+      }
+    }
+
+    void sampling(const Eigen::Matrix4f& input){
+      poses.clear();
+      for(int i = 0; i < numberOfParticles; i++){
+        poses.push_back(propagate(input, 0.1, 0.01));
+      }
+    }
+
+    Eigen::Matrix4f get(int index){
+      return poses[index];
+    }
+
+    size_t size(){
+      return poses.size();
+    }
+
+    Eigen::Matrix4f propagate(const Eigen::Matrix4f& input, float deviationsOnRot, float deviationOnTrans){
+      Eigen::Matrix4f result;
+      result.setIdentity();
+      std::random_device mch;
+      std::default_random_engine generator(mch());
+      std::normal_distribution<float> rot_distribution(0.0, deviationsOnRot);
+      std::normal_distribution<float> trans_distribution(0.0, deviationOnTrans);
+      std::vector<float> rpy(3);
+      for(int r = 0; r < 3; r++)
+        rpy[r] = rot_distribution(generator);
+      
+      Eigen::Matrix3f rot = (Eigen::AngleAxisf(rpy[0], Eigen::Vector3f::UnitX()) * 
+                            Eigen::AngleAxisf(rpy[1], Eigen::Vector3f::UnitY()) * 
+                            Eigen::AngleAxisf(rpy[2], Eigen::Vector3f::UnitZ())).toRotationMatrix();
+      result.block<3,3>(0,0) = rot;
+      for(int p = 0; p < 3; p++)
+        result(p,3) = trans_distribution(generator);
+
+      result = input * result;
+      return result;
+    }
+
+    std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> poses;
+    int numberOfParticles;
+};
 
 class Table_cloud_receiver{
   public:
@@ -82,6 +153,132 @@ class Table_cloud_receiver{
     float orientationx, orientationy, orientationz, orientationw; 
     bool gotData;
 };
+
+class MarkerHelper{
+  public:
+    MarkerHelper(ros::NodeHandle &nh){
+      marker_pub = nh.advertise<visualization_msgs::MarkerArray>("particles", 1);
+      headerNum = 30;
+      currentNumOfMarkers = 0;
+    }
+
+    void cleanMarkers(int numofParticle){
+      if(numofParticle == 0)
+        return;
+      visualization_msgs::MarkerArray markers;
+
+      // clear markers
+      for(int pn = 0; pn < numofParticle ; ++pn){
+        visualization_msgs::Marker marker;
+
+        marker.header.stamp = ros::Time::now();
+
+        marker.id = pn + headerNum;
+
+        marker.type = visualization_msgs::Marker::MESH_RESOURCE;
+
+        marker.action = visualization_msgs::Marker::DELETE;
+        markers.markers.push_back(marker);
+      }
+      marker_pub.publish(markers);
+      markers.markers.clear();
+      numofParticle = 0;
+    }
+
+    void deleteAllMarkers(){
+
+      visualization_msgs::MarkerArray markers;
+      visualization_msgs::Marker marker;
+      marker.header.frame_id = "/head_camera_rgb_optical_frame";
+      marker.header.stamp = ros::Time::now();
+      marker.action = visualization_msgs::Marker::DELETEALL;
+      markers.markers.push_back(marker);
+      marker_pub.publish(markers);
+      markers.markers.clear();
+    }
+
+    void publishMarkers(std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &inputs, std::vector<float> &weights){
+
+      float height_weight = *std::max_element(weights.begin(), weights.end());
+
+      // cleanMarkers(currentNumOfMarkers);
+      deleteAllMarkers();
+      visualization_msgs::MarkerArray markers;
+
+      currentNumOfMarkers = inputs.size();
+
+      for(int pn = 0; pn < inputs.size() ; ++pn){
+        // std::cout << pose_particles[pn] << std::endl;
+
+        visualization_msgs::Marker marker;
+
+        marker.header.frame_id = "/head_camera_rgb_optical_frame";
+        marker.header.stamp = ros::Time::now();
+
+        marker.id = pn + headerNum;
+
+        marker.type = visualization_msgs::Marker::MESH_RESOURCE;
+        marker.mesh_resource = "package://regrasp_planner/scripts/objects/cuboid.stl";
+
+        marker.action = visualization_msgs::Marker::ADD;
+
+        Eigen::Quaternionf eigen_quat(inputs[pn].block<3,3>(0,0).cast<float>());
+        Eigen::Vector3f eigen_trans(inputs[pn].block<3,1>(0,3).cast<float>());
+
+        marker.pose.orientation.x = eigen_quat.x();
+        marker.pose.orientation.y = eigen_quat.y();
+        marker.pose.orientation.z = eigen_quat.z();
+        marker.pose.orientation.w = eigen_quat.w();
+        marker.pose.position.x = eigen_trans.x();
+        marker.pose.position.y = eigen_trans.y();
+        marker.pose.position.z = eigen_trans.z();
+
+        marker.scale.x = 0.001;
+        marker.scale.y = 0.001;
+        marker.scale.z = 0.001;
+
+        marker.color.a = 0.2 + 0.8 * (weights[pn] / height_weight);
+        marker.color.r = 0.0;
+        marker.color.g = 0.5;
+        marker.color.b = 0.5;
+
+        markers.markers.push_back(marker);
+      }
+
+      marker_pub.publish(markers);
+      markers.markers.clear();
+    }
+
+    ros::Publisher marker_pub;
+    int headerNum, currentNumOfMarkers;
+};
+
+// softmax function
+void softmax(std::vector<float> &input) {
+
+	int i;
+	double m, sum, constant;
+  int size = input.size();
+
+	m = -INFINITY;
+	for (i = 0; i < size; ++i) {
+		if (m < input[i]) {
+			m = input[i];
+		}
+	}
+
+	sum = 0.0;
+	for (i = 0; i < size; ++i) {
+		sum += exp(input[i] - m);
+	}
+
+	constant = m + log(sum);
+	for (i = 0; i < size; ++i) {
+		input[i] = exp(input[i] - constant);
+	}
+
+}
+
 
 // callback function for camera information
 void camInfoCallback(const sensor_msgs::CameraInfoConstPtr& caminfo){
@@ -251,6 +448,7 @@ bool searchObjectTrig(icra20_manipulation_pose::SearchObject::Request &req,
   return true;
 }
 
+
 int main(int argc, char **argv)
 {
   ros::init(argc, argv, "tracking");
@@ -266,10 +464,13 @@ int main(int argc, char **argv)
   predicted_table_center_pose.setIdentity();
   initFlag = false;
   isTracking = false;
+  bool isObjectTracking = false;
   actiontype = 0;
   trackstamp = 0;
   bool istableTracked = false;
   Eigen::Matrix4f table_offset;
+  std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> pose_particles;
+  pose_particles.reserve(30);
   table_offset.setIdentity();
   
   // action type:
@@ -350,6 +551,9 @@ int main(int argc, char **argv)
   ros::Publisher test2_pub = nh.advertise<PointCloudRGBNormal> ("test2", 1);
   ros::Publisher table_pub = nh.advertise<PointCloud> ("table_debug", 1);
 
+  // marker helper
+  MarkerHelper marker_helper(nh);
+
   // estimated pose
   ros::Publisher predicted_object_pointcloud_pub = nh.advertise<PointCloudSurfel> ("predicted_object", 1);
   // init service server with function 'searchObjectTrig'
@@ -357,6 +561,9 @@ int main(int argc, char **argv)
 
   // init hand
   HandT42 hand(&cfg, cfg.cam_intrinsic, 640, 480);
+
+  // init particle filter
+  ParticleFilter partcile_filter(60);
 
   ros::Rate loop_rate(10);
 
@@ -413,11 +620,6 @@ int main(int argc, char **argv)
       pass.filter(*scene_rgb);
     }
 
-    PointCloudRGBNormal::Ptr scene_organized(new PointCloudRGBNormal);
-    pcl::copyPointCloud(*scene_rgb, *scene_organized);
-
-    Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_rgb, scene_rgb, 0.001);
-
     // filter out point not in the hand link bounding
     Eigen::Matrix4f cam_in_handbase = handbase_in_cam.inverse();
     pcl::transformPointCloudWithNormals(*scene_rgb, *scene_rgb, cam_in_handbase);
@@ -427,20 +629,29 @@ int main(int argc, char **argv)
       pass.setInputCloud(scene_rgb);
       pass.setFilterFieldName("z");
       pass.setFilterLimits(-0.08, 0.08);
+      pass.setKeepOrganized(true);
       pass.filter(*scene_rgb);
 
       pass.setInputCloud(scene_rgb);
       pass.setFilterFieldName("x");
-      pass.setFilterLimits(-0.15, 0.08);
+      pass.setFilterLimits(-0.145, 0.08);
+      pass.setKeepOrganized(true);
       pass.filter(*scene_rgb);
 
       pass.setInputCloud(scene_rgb);
       pass.setFilterFieldName("y");
       pass.setFilterLimits(-0.07, 0.07);
+      pass.setKeepOrganized(true);
       pass.filter(*scene_rgb);
     }
 
     pcl::transformPointCloudWithNormals(*scene_rgb, *scene_rgb, cam_in_handbase.inverse());
+
+    PointCloudRGBNormal::Ptr scene_organized(new PointCloudRGBNormal);
+    pcl::copyPointCloud(*scene_rgb, *scene_organized);
+
+    Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_rgb, scene_rgb, 0.001);
+
 
     // filter out the pointcloud according to the event
     // need to process on scene_organized
@@ -535,17 +746,17 @@ int main(int argc, char **argv)
         }
 
         pcl::transformPointCloudWithNormals(*scene_organized, *scene_organized, filterTransform.inverse());
-
-        // cv::Mat scene_depth_check = cv::Mat::zeros(scene_depth.rows, scene_depth.cols, CV_32FC1);
-        Utils::convert2dDepth<pcl::PointXYZRGBNormal>(scene_organized, cam_info_K, scene_depth);
-        cv::imshow("depth_view", scene_depth);
-        cv::waitKey(5);
         
       }else{
         table_offset.setIdentity();
         istableTracked = false;
       }
     }
+
+    // cv::Mat scene_depth_check = cv::Mat::zeros(scene_depth.rows, scene_depth.cols, CV_32FC1);
+    Utils::convert2dDepth<pcl::PointXYZRGBNormal>(scene_organized, cam_info_K, scene_depth);
+    cv::imshow("depth_view", scene_depth);
+    cv::waitKey(5);
 
     // // publish the pointcloud of hand
     scene_rgb->header.frame_id = "/head_camera_rgb_optical_frame";
@@ -631,38 +842,97 @@ int main(int argc, char **argv)
     est.setCurScene(scene_003, cloud_withouthand_raw, object_segment, scene_bgr, scene_depth);
     est.registerHandMesh(&hand);
     est.registerMesh(cfg.object_mesh_path, "object", Eigen::Matrix4f::Identity());
-    // if predicted pose in hand is identity, then it will not guess with it
-    bool succeed;
-    if(predicted_pose_in_hand.isZero()){
-      succeed = est.runSuper4pcs(ppfs, Eigen::Matrix4f::Identity());
-    }else{
-      succeed = est.runSuper4pcs(ppfs, hand._handbase_in_cam * predicted_pose_in_hand);
-    }
-     
+    Eigen::Matrix4f model2scene;
 
-    if (!succeed)
-    {
-      printf("No pose found...\n");
-      model2hand.setIdentity();
+    if(!isObjectTracking){
+      // run super 4pcs
+      bool succeed;
+      if(predicted_pose_in_hand.isZero()){
+        succeed = est.runSuper4pcs(ppfs, Eigen::Matrix4f::Identity());
+      }else{
+        succeed = est.runSuper4pcs(ppfs, hand._handbase_in_cam * predicted_pose_in_hand);
+      }
+      
+      if(succeed){
+        est.clusterPoses(30, 0.015, true);
+        est.refineByICP();
+        est.clusterPoses(5, 0.003, false);
+        est.rejectByCollisionOrNonTouching(&hand);
+        est.rejectByRender(cfg.pose_estimator_wrong_ratio, &hand);
+
+        // select the best and publish
+        PoseHypo best(-1);
+        est.selectBest(best, &hand);
+
+        // generate the particles
+        partcile_filter.sampling(best._pose);
+        pose_particles.clear();
+        for(int n = 0; n < partcile_filter.size(); n++)
+          pose_particles.push_back(partcile_filter.get(n));
+
+        model2scene = best._pose;
+
+        isObjectTracking = true;
+      }
+      else{
+        isObjectTracking = false;
+      }
     }
     else{
-      printf("pose found...\n");
 
-      est.clusterPoses(30, 0.015, true);
+      est.runUpdate(pose_particles);
       est.refineByICP();
-      est.clusterPoses(5, 0.003, false);
+      est.clusterPoses(3, 0.002, true);
       est.rejectByCollisionOrNonTouching(&hand);
       est.rejectByRender(cfg.pose_estimator_wrong_ratio, &hand);
+
+      pose_particles.clear();
+
+      std::vector<float> hypo_wrong_ratios;
+
       PoseHypo best(-1);
       est.selectBest(best, &hand);
-      Eigen::Matrix4f model2scene = best._pose;
-      // std::cout << "best tf:\n"
-      //           << model2scene << "\n\n";
 
-      // calculate the predicted object pose to hand
-      model2hand = hand._handbase_in_cam.inverse() * model2scene;
+      for(int n = 0; n < est.getNumOfHypos(); n++){
+        PoseHypo selectedHypo(-1);
+        est.selectIndex(selectedHypo, n);
+        // if the wrong ratio is too high, then ignore it
+        if(selectedHypo._wrong_ratio > 5.0 || selectedHypo._lcp_score < 100)
+          continue;
+        pose_particles.push_back(selectedHypo._pose);
+        hypo_wrong_ratios.push_back(-selectedHypo._wrong_ratio);
+      }
 
-      // // publish the predicted object pointcloud in camera frame
+      if(pose_particles.size() == 0)
+        isObjectTracking = false;
+      else{
+        softmax(hypo_wrong_ratios);
+
+        int maxWeightIndex = std::max_element(hypo_wrong_ratios.begin(), hypo_wrong_ratios.end()) - hypo_wrong_ratios.begin();
+        model2scene = pose_particles[maxWeightIndex];
+        // PoseHypo best(-1);
+        // est.selectBest(best, &hand);
+        // model2scene = best._pose;
+
+        // printf("weights ");
+        // for(float itr : hypo_wrong_ratios)
+        //   printf(" %f ", itr);
+        // printf("\n");
+
+        marker_helper.publishMarkers(pose_particles, hypo_wrong_ratios);
+
+        // need to resampling
+        partcile_filter.resample(pose_particles, hypo_wrong_ratios);
+        pose_particles.clear();
+        for(int n = 0; n < partcile_filter.size(); n++)
+          pose_particles.push_back(partcile_filter.get(n));
+      }
+    }
+
+    if(isObjectTracking){
+      printf("object is tracked!");
+
+      // publish the predicted object pointcloud in camera frame
       PointCloudSurfel::Ptr predicted_model(new PointCloudSurfel);
       pcl::transformPointCloud(*model, *predicted_model, model2scene);
       predicted_model->header.frame_id = "/head_camera_rgb_optical_frame";
@@ -672,14 +942,22 @@ int main(int argc, char **argv)
       object_segment->header.frame_id = "/head_camera_rgb_optical_frame";
       object_only_pointcloud_pub.publish(object_segment);
 
+      // calculate the predicted object pose to hand
+      model2hand = hand._handbase_in_cam.inverse() * model2scene;
       if(actiontype == 2 || actiontype == 3 || actiontype == 4){
-
-        predicted_hand_pose = hand._handbase_in_cam;
 
         predicted_pose_in_hand = model2hand;
       }
+      // // publish the markers
+      // marker_helper.publishMarkers(pose_particles);
     }
-    
+    else{
+      printf("lost the object!");
+      model2hand.setIdentity();
+    }
+
+    predicted_hand_pose = hand._handbase_in_cam;
+  
     end_time = ros::WallTime::now();
 
     ROS_INFO_STREAM("Exec time(ms): " << (end_time - start_time).toNSec()*1e-6);

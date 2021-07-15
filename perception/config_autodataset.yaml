@@ -112,7 +112,7 @@ lcp:
 #   dist: 0.001
 #   normal_angle: 10
 
-
+wrong_ratio_threhold: 5.0
 pose_estimator_wrong_ratio: 1
 render_roi_weight: 2.0
 render_keep_hypo: 0.3
