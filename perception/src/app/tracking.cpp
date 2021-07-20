@@ -620,6 +620,9 @@ int main(int argc, char **argv)
       pass.filter(*scene_rgb);
     }
 
+    PointCloudRGBNormal::Ptr scene_organized_with_table(new PointCloudRGBNormal);
+    pcl::copyPointCloud(*scene_rgb, *scene_organized_with_table);
+
     // filter out point not in the hand link bounding
     Eigen::Matrix4f cam_in_handbase = handbase_in_cam.inverse();
     pcl::transformPointCloudWithNormals(*scene_rgb, *scene_rgb, cam_in_handbase);
@@ -650,6 +653,13 @@ int main(int argc, char **argv)
     PointCloudRGBNormal::Ptr scene_organized(new PointCloudRGBNormal);
     pcl::copyPointCloud(*scene_rgb, *scene_organized);
 
+    PointCloudRGBNormal::Ptr occluding_edge(new PointCloudRGBNormal);
+    Utils::get3DEdge(scene_rgb, occluding_edge);
+
+    occluding_edge->header.frame_id = "/head_camera_rgb_optical_frame";
+    occluding_edge->header.stamp = ros::Time::now().toNSec()/1e3;
+    test1_pub.publish(occluding_edge);
+
     Utils::downsamplePointCloud<pcl::PointXYZRGBNormal>(scene_rgb, scene_rgb, 0.001);
 
 
@@ -679,7 +689,7 @@ int main(int argc, char **argv)
       Utils::downsamplePointCloud<pcl::PointXYZ>(table_in_cam, table_in_cam, 0.01);
 
       PointCloud::Ptr scene_pointcloud_XYZ(new PointCloud);
-      pcl::copyPointCloud(*scene_organized, *scene_pointcloud_XYZ);
+      pcl::copyPointCloud(*scene_organized_with_table, *scene_pointcloud_XYZ);
       Utils::downsamplePointCloud<pcl::PointXYZ>(scene_pointcloud_XYZ, scene_pointcloud_XYZ, 0.01);
 
       pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;

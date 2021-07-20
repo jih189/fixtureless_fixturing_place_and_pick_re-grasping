@@ -351,6 +351,36 @@ void calNormalMLS(boost::shared_ptr<pcl::PointCloud<PointT>> cloud, float normal
 template void calNormalMLS<pcl::PointXYZRGBNormal>(boost::shared_ptr<pcl::PointCloud<pcl::PointXYZRGBNormal>> cloud, float normal_radius);
 template void calNormalMLS<pcl::PointSurfel>(boost::shared_ptr<pcl::PointCloud<pcl::PointSurfel>> cloud, float normal_radius);
 
+void get3DEdge(boost::shared_ptr<PointCloudRGBNormal> input, boost::shared_ptr<PointCloudRGBNormal> output){
+    PointCloudRGBNormal::Ptr occluding_edge(new PointCloudRGBNormal);
+    PointCloudRGB::Ptr inputPoint(new PointCloudRGB);
+    Normal::Ptr normal (new Normal);
+
+    // compute the 3d edge
+    pcl::copyPointCloud(*input, *normal);
+    pcl::copyPointCloud(*input, *inputPoint);
+    float th_dd = 0.03;
+    int max_search = 100;
+    pcl::OrganizedEdgeFromNormals<pcl::PointXYZRGB, pcl::Normal, pcl::Label> oed;
+    oed.setDepthDisconThreshold(th_dd);
+    oed.setMaxSearchNeighbors(max_search);
+    oed.setEdgeType(oed.EDGELABEL_NAN_BOUNDARY | oed.EDGELABEL_OCCLUDING);
+    pcl::PointCloud<pcl::Label> labels;
+    std::vector<pcl::PointIndices> label_indices;
+
+    oed.setInputCloud(inputPoint);
+    oed.setInputNormals(normal);
+    oed.compute(labels, label_indices);
+
+    std::vector<int> result;
+    result.reserve(label_indices[0].indices.size() + label_indices[1].indices.size());
+    result.insert(result.end(), label_indices[0].indices.begin(), label_indices[0].indices.end());
+    result.insert(result.end(), label_indices[1].indices.begin(), label_indices[1].indices.end());
+
+
+    pcl::copyPointCloud(*input, result, *output);  
+}
+
 template <class PointT>
 void calNormalIntegralImage(boost::shared_ptr<pcl::PointCloud<PointT>> cloud, int method, float max_depth_change_factor, float smooth_size, bool depth_dependent_smooth)
 {

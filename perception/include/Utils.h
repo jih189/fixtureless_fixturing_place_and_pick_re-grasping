@@ -99,6 +99,7 @@
 #include <pcl/tracking/normal_coherence.h>
 #include <pcl/registration/default_convergence_criteria.h>
 #include <pcl/features/principal_curvatures.h>
+#include <pcl/features/organized_edge_detection.h>
 #include <boost/serialization/array.hpp>
 #define EIGEN_DENSEBASE_PLUGIN "EigenDenseBaseAddons.h"
 
@@ -116,6 +117,7 @@ typedef pcl::PointCloud<pcl::PointXYZRGBNormal> PointCloudRGBNormal;
 typedef pcl::PointCloud<pcl::PointNormal> PointCloudNormal;
 typedef pcl::PointCloud<pcl::PointSurfel> PointCloudSurfel;
 typedef pcl::PointCloud<pcl::PrincipalCurvatures> PointCloudCurvatures;
+typedef pcl::PointCloud<pcl::Normal> Normal;
 
 
 // #define DBG_ICP
@@ -124,6 +126,7 @@ typedef pcl::PointCloud<pcl::PrincipalCurvatures> PointCloudCurvatures;
 // Declaration for common utility functions
 namespace Utils
 {
+void get3DEdge(boost::shared_ptr<PointCloudRGBNormal> input, boost::shared_ptr<PointCloudRGBNormal> output);
 void delimitString(std::string str, char dilimiter, std::vector<float> &v);
 float rotationGeodesicDistance(const Eigen::Matrix3f &R1, const Eigen::Matrix3f &R2);
 Eigen::Quaternionf averageQuaternions(const std::vector<Eigen::Quaternionf> &qs) ;
