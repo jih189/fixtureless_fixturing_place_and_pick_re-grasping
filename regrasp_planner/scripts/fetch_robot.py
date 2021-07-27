@@ -34,7 +34,7 @@ class Fetch_Robot():
         self.viewboxname = "viewbox"
 
         self.group_name = "arm"
-        self.group = moveit_commander.MoveGroupCommander(self.group_name, , wait_for_servers=60.0)
+        self.group = moveit_commander.MoveGroupCommander(self.group_name, wait_for_servers=60.0)
 
         self.display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory, queue_size=10)
         self.display_place_robot_state_publisher = rospy.Publisher('/move_group/display_place_robot_state', moveit_msgs.msg.DisplayRobotState, queue_size=10)
@@ -46,9 +46,9 @@ class Fetch_Robot():
         self.close_joints = [-0.04]
         self.client = actionlib.SimpleActionClient("/gripper_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
 
-        rospy.loginfo('Waiting for joint trajectory action')    
-        self.client.wait_for_server()
-        rospy.loginfo('Found joint trajectory action!')
+        # rospy.loginfo('Waiting for joint trajectory action')    
+        # self.client.wait_for_server()
+        # rospy.loginfo('Found joint trajectory action!')
 
         planning_frame = self.group.get_planning_frame()
         print "=========== Reference frame:%s" % planning_frame

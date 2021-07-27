@@ -307,7 +307,9 @@ int main(int argc, char **argv)
 
         cv::cvtColor(cv_bridge::toCvCopy(srv.response.Result, "rgb8")->image, object_mask, CV_BGR2GRAY);
 
-        if(cv::countNonZero(object_mask) > 1000){ // check whether detect the object
+        cv::imshow("mask", object_mask);
+
+        if(cv::countNonZero(object_mask) > 800){ // check whether detect the object
 
             // extract point cloud belong into the object
             for (int u = 0; u < object_mask.rows; u++){
@@ -329,6 +331,10 @@ int main(int argc, char **argv)
                 pass.setKeepOrganized(true);
                 pass.filter(*object_rgb);
             }
+
+            object_rgb->header.frame_id = "/head_camera_rgb_optical_frame";
+            object_rgb->header.stamp = ros::Time::now().toNSec()/1e3;
+            object_3d_mask_pub.publish(object_rgb);
 
             // extract the point cloud being to the object
             PointCloudSurfel::Ptr object1(new PointCloudSurfel);
@@ -403,11 +409,13 @@ int main(int argc, char **argv)
                 for(int n = 0; n < est.getNumOfHypos(); n++){
                     PoseHypo selectedHypo(-1);
                     est.selectIndex(selectedHypo, n);
-                    if(selectedHypo._lcp_score < 100)
+                    if(selectedHypo._lcp_score < 50)
                         continue;
                     pose_particles.push_back(selectedHypo._pose);
                     hypo_lcp_scores.push_back(selectedHypo._lcp_score);
                 }
+
+                // ROS_INFO_STREAM("number of particle " << pose_particles.size());
 
                 if(pose_particles.size() == 0)
                     isTracking = false;

@@ -69,7 +69,7 @@ class TF_Helper():
         self.br = tf.TransformBroadcaster()
 
     def getTransform(self, parent_link, child_link):
-        self.listener.waitForTransform(parent_link, child_link, rospy.Time(), rospy.Duration(4.0))
+        self.listener.waitForTransform(parent_link, child_link, rospy.Time(), rospy.Duration(10.0))
         trans, rot = self.listener.lookupTransform(parent_link, child_link, rospy.Time())
         return trans, rot
 

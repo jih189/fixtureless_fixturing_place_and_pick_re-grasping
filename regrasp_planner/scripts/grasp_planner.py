@@ -19,7 +19,6 @@ import moveit_commander
 if __name__=='__main__':
     rospy.init_node('grasp_node')
 
-
     tf_helper = TF_Helper()
 
     # get the object searcher trigger to control the tracker
@@ -28,15 +27,14 @@ if __name__=='__main__':
 
     robot = Fetch_Robot()
 
+    ## launch the tracker
+    objectSearcherTrigger(True, 1, Pose())
 
-    # ## launch the tracker
-    # objectSearcherTrigger(True, 1, Pose())
-
-    # try:
-    #     # add the object to the moveit
-    #     target_transform = tf_helper.getTransform('/base_link', '/cup')
-    #     robot.addCollisionObject("object", target_transform, "objects/cuboid.stl")
-    # except:
-    #     print "fail to detect the object"
-        
-    # objectSearcherTrigger(False, 0, Pose())
+    try:
+        # add the object to the moveit
+        target_transform = tf_helper.getTransform('/base_link', '/cup')
+        robot.addCollisionObject("object", target_transform, "objects/cup.stl")
+    except Exception as e:
+        print e
+    
+    objectSearcherTrigger(False, 0, Pose())
