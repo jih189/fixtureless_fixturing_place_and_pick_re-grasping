@@ -7,10 +7,11 @@
 #include "tinyxml2.h"
 #include "yaml-cpp/yaml.h"
 #include "PoseHypo.h"
+#include "ParticleFilter.h"
+#include "MarkerHelper.h"
 
 #include <ros/console.h>
-#include <visualization_msgs/MarkerArray.h>
-#include <visualization_msgs/Marker.h>
+
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
@@ -24,7 +25,6 @@
 
 #include <icra20_manipulation_pose/SearchObject.h>
 #include <rail_manipulation_msgs/SegmentObjects.h>
-#include <Eigen/StdVector>
 
 #include <random>
 #include <math.h>
@@ -50,71 +50,6 @@ Eigen::Matrix4f predicted_pose_in_hand;
 bool isTracking;
 int actiontype;
 unsigned int trackstamp;
-
-class ParticleFilter{
-  public:
-    ParticleFilter(int numberOfParticles_input){
-      numberOfParticles = numberOfParticles_input;
-      poses.reserve(numberOfParticles);
-    }
-
-    void resample(std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &poses_of_particle, std::vector<float> &weights_of_particle){
-
-      int maxWeightIndex = std::max_element(weights_of_particle.begin(), weights_of_particle.end()) - weights_of_particle.begin();
-
-      std::random_device mch;
-      std::default_random_engine generator(mch());
-      std::discrete_distribution<int> distribution(weights_of_particle.begin(), weights_of_particle.end());
-
-      poses.clear();
-
-      poses.push_back(poses_of_particle[maxWeightIndex]);
-
-      for(int i = 1; i < numberOfParticles; i++){
-        poses.push_back(propagate(poses_of_particle[distribution(generator)], 0.04, 0.002));
-      }
-    }
-
-    void sampling(const Eigen::Matrix4f& input){
-      poses.clear();
-      for(int i = 0; i < numberOfParticles; i++){
-        poses.push_back(propagate(input, 0.1, 0.01));
-      }
-    }
-
-    Eigen::Matrix4f get(int index){
-      return poses[index];
-    }
-
-    size_t size(){
-      return poses.size();
-    }
-
-    Eigen::Matrix4f propagate(const Eigen::Matrix4f& input, float deviationsOnRot, float deviationOnTrans){
-      Eigen::Matrix4f result;
-      result.setIdentity();
-      std::random_device mch;
-      std::default_random_engine generator(mch());
-      std::normal_distribution<float> rot_distribution(0.0, deviationsOnRot);
-      std::normal_distribution<float> trans_distribution(0.0, deviationOnTrans);
-      std::vector<float> rpy(3);
-      for(int r = 0; r < 3; r++)
-        rpy[r] = rot_distribution(generator);
-      
-      Eigen::Matrix3f rot = (Eigen::AngleAxisf(rpy[0], Eigen::Vector3f::UnitX()) * 
-                            Eigen::AngleAxisf(rpy[1], Eigen::Vector3f::UnitY()) * 
-                            Eigen::AngleAxisf(rpy[2], Eigen::Vector3f::UnitZ())).toRotationMatrix();
-      result.block<3,3>(0,0) = rot;
-      for(int p = 0; p < 3; p++)
-        result(p,3) = trans_distribution(generator);
-
-      result = input * result;
-      return result;
-    }
-
-    std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> poses;
-    int numberOfParticles;
-};
 
 class Table_cloud_receiver{
   public:
@@ -152,105 +87,6 @@ class Table_cloud_receiver{
     float centerx, centery, centerz;
     float orientationx, orientationy, orientationz, orientationw; 
     bool gotData;
-};
-
-class MarkerHelper{
-  public:
-    MarkerHelper(ros::NodeHandle &nh){
-      marker_pub = nh.advertise<visualization_msgs::MarkerArray>("particles", 1);
-      headerNum = 30;
-      currentNumOfMarkers = 0;
-    }
-
-    void cleanMarkers(int numofParticle){
-      if(numofParticle == 0)
-        return;
-      visualization_msgs::MarkerArray markers;
-
-      // clear markers
-      for(int pn = 0; pn < numofParticle ; ++pn){
-        visualization_msgs::Marker marker;
-
-        marker.header.stamp = ros::Time::now();
-
-        marker.id = pn + headerNum;
-
-        marker.type = visualization_msgs::Marker::MESH_RESOURCE;
-
-        marker.action = visualization_msgs::Marker::DELETE;
-        markers.markers.push_back(marker);
-      }
-      marker_pub.publish(markers);
-      markers.markers.clear();
-      numofParticle = 0;
-    }
-
-    void deleteAllMarkers(){
-
-      visualization_msgs::MarkerArray markers;
-      visualization_msgs::Marker marker;
-      marker.header.frame_id = "/head_camera_rgb_optical_frame";
-      marker.header.stamp = ros::Time::now();
-      marker.action = visualization_msgs::Marker::DELETEALL;
-      markers.markers.push_back(marker);
-      marker_pub.publish(markers);
-      markers.markers.clear();
-    }
-
-    void publishMarkers(std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &inputs, std::vector<float> &weights){
-
-      float height_weight = *std::max_element(weights.begin(), weights.end());
-
-      // cleanMarkers(currentNumOfMarkers);
-      deleteAllMarkers();
-      visualization_msgs::MarkerArray markers;
-
-      currentNumOfMarkers = inputs.size();
-
-      for(int pn = 0; pn < inputs.size() ; ++pn){
-        // std::cout << pose_particles[pn] << std::endl;
-
-        visualization_msgs::Marker marker;
-
-        marker.header.frame_id = "/head_camera_rgb_optical_frame";
-        marker.header.stamp = ros::Time::now();
-
-        marker.id = pn + headerNum;
-
-        marker.type = visualization_msgs::Marker::MESH_RESOURCE;
-        marker.mesh_resource = "package://regrasp_planner/scripts/objects/cuboid.stl";
-
-        marker.action = visualization_msgs::Marker::ADD;
-
-        Eigen::Quaternionf eigen_quat(inputs[pn].block<3,3>(0,0).cast<float>());
-        Eigen::Vector3f eigen_trans(inputs[pn].block<3,1>(0,3).cast<float>());
-
-        marker.pose.orientation.x = eigen_quat.x();
-        marker.pose.orientation.y = eigen_quat.y();
-        marker.pose.orientation.z = eigen_quat.z();
-        marker.pose.orientation.w = eigen_quat.w();
-        marker.pose.position.x = eigen_trans.x();
-        marker.pose.position.y = eigen_trans.y();
-        marker.pose.position.z = eigen_trans.z();
-
-        marker.scale.x = 0.001;
-        marker.scale.y = 0.001;
-        marker.scale.z = 0.001;
-
-        marker.color.a = 0.2 + 0.8 * (weights[pn] / height_weight);
-        marker.color.r = 0.0;
-        marker.color.g = 0.5;
-        marker.color.b = 0.5;
-
-        markers.markers.push_back(marker);
-      }
-
-      marker_pub.publish(markers);
-      markers.markers.clear();
-    }
-
-    ros::Publisher marker_pub;
-    int headerNum, currentNumOfMarkers;
 };
 
 // softmax function
@@ -552,7 +388,7 @@ int main(int argc, char **argv)
   ros::Publisher table_pub = nh.advertise<PointCloud> ("table_debug", 1);
 
   // marker helper
-  MarkerHelper marker_helper(nh);
+  MarkerHelper marker_helper(nh, "package://regrasp_planner/scripts/objects/cuboid.stl");
 
   // estimated pose
   ros::Publisher predicted_object_pointcloud_pub = nh.advertise<PointCloudSurfel> ("predicted_object", 1);
@@ -872,7 +708,7 @@ int main(int argc, char **argv)
 
         // select the best and publish
         PoseHypo best(-1);
-        est.selectBest(best, &hand);
+        est.selectBest(best);//, &hand);
 
         // generate the particles
         partcile_filter.sampling(best._pose);
@@ -901,7 +737,7 @@ int main(int argc, char **argv)
       std::vector<float> hypo_wrong_ratios;
 
       PoseHypo best(-1);
-      est.selectBest(best, &hand);
+      est.selectBest(best);//, &hand);
 
       for(int n = 0; n < est.getNumOfHypos(); n++){
         PoseHypo selectedHypo(-1);

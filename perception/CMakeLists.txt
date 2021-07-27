@@ -19,6 +19,10 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   tf_conversions
   rail_manipulation_msgs
+  moveit_core
+  moveit_ros_planning
+  moveit_ros_planning_interface
+  moveit_ros_perception
 )
 find_package(Boost REQUIRED COMPONENTS system program_options)
 find_package(PCL 1.9 REQUIRED  COMPONENTS io common visualization features registration)
@@ -74,6 +78,8 @@ catkin_package(
     geometry_msgs
     tf
     tf_conversions
+    moveit_core
+    moveit_ros_planning_interface
 
   LIBRARIES
   ${PROJECT_NAME}
@@ -88,4 +94,5 @@ target_link_libraries(computePPF ${PROJECT_NAME})
 # target_link_libraries(run_real_all ${PROJECT_NAME})
 add_executable(tracking  src/app/tracking.cpp)
 target_link_libraries(tracking ${PROJECT_NAME})
-
+add_executable(pose_estimation  src/app/pose_estimation.cpp)
+target_link_libraries(pose_estimation ${PROJECT_NAME})

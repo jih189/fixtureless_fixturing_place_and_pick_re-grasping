@@ -91,6 +91,7 @@ bool PoseEstimator<PointT>::runSuper4pcs(const std::map<std::vector<int>, std::v
   boost::shared_ptr<pcl::PointCloud<PointT> > aligned(new pcl::PointCloud<PointT>);
   super4pcs.align (*aligned, init_pose);
 
+
   std::vector<Eigen::Matrix4f,Eigen::aligned_allocator<Eigen::Matrix4f> > hypos;
   std::vector<float> scores;
   super4pcs.getPoseHypo(hypos,scores);
@@ -373,6 +374,112 @@ class CompareWrongRatio
 
 
 template<class PointT>
+void PoseEstimator<PointT>::rejectByRender(float projection_thres)
+{
+  // printf("before projection check, #hypo=%d\n", _pose_hypos.size());
+  // remember change the resolution for new camera
+  const int H = 480, W = 640;
+  std::vector<PoseHypo, Eigen::aligned_allocator<PoseHypo>> hypo_tmp = _pose_hypos;
+  _pose_hypos.clear();
+  PointCloud::Ptr cloud_tmp(new PointCloud);
+  pcl::fromPCLPointCloud2(_obj_mesh->cloud, *cloud_tmp);
+  PointCloudRGB::Ptr cloud_color(new PointCloudRGB);
+  pcl::copyPointCloud(*cloud_tmp, *cloud_color);
+  for (auto &pt : cloud_color->points)
+  {
+    pt.r = 0;
+    pt.g = 0;
+    pt.b = 255;
+  }
+  pcl::toPCLPointCloud2(*cloud_color, _obj_mesh->cloud);
+  _renderer.clearScene();
+
+  std::vector<cv::Mat> depth_sims(hypo_tmp.size()), color_sims(hypo_tmp.size());
+  for (int i = 0; i < hypo_tmp.size(); i++)
+  {
+    Eigen::Matrix4f model2scene = hypo_tmp[i]._pose;
+    _renderer.addObject(_obj_mesh, model2scene);
+    _renderer.doRender(Eigen::Matrix4d::Identity(), depth_sims[i], color_sims[i]);
+    _renderer.removeLastObject();
+  }
+
+  const float roi_weight = cfg->yml["render_roi_weight"].as<float>();
+#pragma omp parallel
+  {
+    cv::Mat depth_meters = _depth_meters.clone();
+
+#pragma omp for schedule(dynamic)
+    for (int i = 0; i < hypo_tmp.size(); i++)
+    {
+      Eigen::Matrix4f model2scene = hypo_tmp[i]._pose;
+
+      //Compare
+      float roi_diff = 0, bg_diff = 0;
+      int roi_cnt = 0, bg_cnt = 0;
+      // cv::Mat diff_map = cv::Mat::zeros(H,W,CV_32F);
+      for (int h = 0; h < H; h++)
+      {
+        for (int w = 0; w < W; w++)
+        {
+          float sim = depth_sims[i].at<float>(h, w);
+          float real = depth_meters.at<float>(h, w);
+          float diff = 0;
+
+          if ((real <= 0.1 || real >= 2.0) && (sim > 0.1 && sim < 2.0))
+          {
+            diff = 2.0;
+          }
+          else if ((sim <= 0.1 || sim >= 2.0) && (real > 0.1 && real < 2.0))
+          {
+            diff = 2.0;
+          }
+          else
+          {
+            diff = 2.0 * std::abs(sim - real);
+          }
+
+          if (color_sims[i].at<cv::Vec3b>(h, w)[0] == 255) //object part is blue
+          {
+            roi_diff += diff;
+            roi_cnt++;
+          }
+          else
+          {
+            bg_diff += diff;
+            bg_cnt++;
+          }
+        }
+      }
+
+      float diff_total = roi_weight * roi_diff / roi_cnt + bg_diff / bg_cnt;
+      hypo_tmp[i]._wrong_ratio = diff_total;
+    }
+  }
+
+  std::priority_queue<PoseHypo, std::vector<PoseHypo, Eigen::aligned_allocator<PoseHypo>>, CompareWrongRatio> Q;
+  for (auto &p : hypo_tmp)
+  {
+    Q.push(p);
+  }
+  int num_to_keep = std::max(static_cast<int>(cfg->yml["render_keep_hypo"].as<float>() * hypo_tmp.size()), 10); // Top ratio to keep
+  num_to_keep = std::min(num_to_keep, static_cast<int>(hypo_tmp.size()));
+  // printf("wrong ratio in queue ");
+  for (int i = 0; i < num_to_keep; i++)
+  {
+    if (Q.empty())
+      break;
+    PoseHypo p = Q.top();
+    // printf(" %f ", p._wrong_ratio);
+
+    Q.pop();
+    _pose_hypos.push_back(p);
+  }
+  printf("\n");
+  // printf("after projection check, #hypo=%d\n", _pose_hypos.size());
+
+}
+
+template<class PointT>
 void PoseEstimator<PointT>::rejectByRender(float projection_thres, HandT42 *hand)
 {
   // printf("before projection check, #hypo=%d\n", _pose_hypos.size());
@@ -512,7 +619,7 @@ void PoseEstimator<PointT>::selectIndex(PoseHypo &selected_hypo, int index){
 }
 
 template<class PointT>
-void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo, HandT42 *hand)
+void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo)//, HandT42 *hand)
 {
   best_hypo = _pose_hypos[0];
   float best_lcp = 0;
@@ -554,69 +661,69 @@ void PoseEstimator<PointT>::selectBest(PoseHypo &best_hypo, HandT42 *hand)
     }
   }
 
-  // render the best
-  const int H = 480, W = 640;
-  PointCloud::Ptr cloud_tmp(new PointCloud);
-  pcl::fromPCLPointCloud2(_obj_mesh->cloud, *cloud_tmp);
-  PointCloudRGB::Ptr cloud_color(new PointCloudRGB);
-  pcl::copyPointCloud(*cloud_tmp, *cloud_color);
-  for (auto &pt : cloud_color->points)
-  {
-    pt.r = 0;
-    pt.g = 0;
-    pt.b = 255;
-  }
-  pcl::toPCLPointCloud2(*cloud_color, _obj_mesh->cloud);
-  _renderer.clearScene();
-  for (const auto &h : hand->_meshes)
-  {
-    std::string name = h.first;
-    if (hand->_component_status[name] == false)
-      continue;
-    Eigen::Matrix4f tf_in_base;
-    hand->getTFHandBase(name, tf_in_base);
-    PointCloud::Ptr cloud_tmp(new PointCloud);
-    pcl::fromPCLPointCloud2(h.second->cloud, *cloud_tmp);
-    PointCloudRGB::Ptr cloud_color(new PointCloudRGB);
-    pcl::copyPointCloud(*cloud_tmp, *cloud_color);
-    for (auto &pt : cloud_color->points)
-    {
-      pt.r = 255;
-      pt.g = 0;
-      pt.b = 0;
-    }
-    pcl::toPCLPointCloud2(*cloud_color, h.second->cloud);
-    _renderer.addObject(h.second, hand->_handbase_in_cam * tf_in_base);
-  }
+  // // render the best
+  // const int H = 480, W = 640;
+  // PointCloud::Ptr cloud_tmp(new PointCloud);
+  // pcl::fromPCLPointCloud2(_obj_mesh->cloud, *cloud_tmp);
+  // PointCloudRGB::Ptr cloud_color(new PointCloudRGB);
+  // pcl::copyPointCloud(*cloud_tmp, *cloud_color);
+  // for (auto &pt : cloud_color->points)
+  // {
+  //   pt.r = 0;
+  //   pt.g = 0;
+  //   pt.b = 255;
+  // }
+  // pcl::toPCLPointCloud2(*cloud_color, _obj_mesh->cloud);
+  // _renderer.clearScene();
+  // for (const auto &h : hand->_meshes)
+  // {
+  //   std::string name = h.first;
+  //   if (hand->_component_status[name] == false)
+  //     continue;
+  //   Eigen::Matrix4f tf_in_base;
+  //   hand->getTFHandBase(name, tf_in_base);
+  //   PointCloud::Ptr cloud_tmp(new PointCloud);
+  //   pcl::fromPCLPointCloud2(h.second->cloud, *cloud_tmp);
+  //   PointCloudRGB::Ptr cloud_color(new PointCloudRGB);
+  //   pcl::copyPointCloud(*cloud_tmp, *cloud_color);
+  //   for (auto &pt : cloud_color->points)
+  //   {
+  //     pt.r = 255;
+  //     pt.g = 0;
+  //     pt.b = 0;
+  //   }
+  //   pcl::toPCLPointCloud2(*cloud_color, h.second->cloud);
+  //   _renderer.addObject(h.second, hand->_handbase_in_cam * tf_in_base);
+  // }
 
-  cv::Mat depth_sim, color_sim;
+  // cv::Mat depth_sim, color_sim;
 
-  Eigen::Matrix4f model2scene = best_hypo_w._pose;
-  _renderer.addObject(_obj_mesh, model2scene);
-  _renderer.doRender(Eigen::Matrix4d::Identity(), depth_sim, color_sim);
-  _renderer.removeLastObject();
+  // Eigen::Matrix4f model2scene = best_hypo_w._pose;
+  // _renderer.addObject(_obj_mesh, model2scene);
+  // _renderer.doRender(Eigen::Matrix4d::Identity(), depth_sim, color_sim);
+  // _renderer.removeLastObject();
 
-  cv::Mat depth_meters = _depth_meters.clone();
+  // cv::Mat depth_meters = _depth_meters.clone();
 
-  for (int h = 0; h < H; h++)
-  {
-    for (int w = 0; w < W; w++)
-    {
-      float sim = depth_sim.at<float>(h, w);
-      float real = depth_meters.at<float>(h, w);
-      if((sim > 0.1 && sim < 2.0) && color_sim.at<cv::Vec3b>(h, w)[2] == 255)
-        depth_meters.at<float>(h, w) = 0.0;
-      else if((sim > 0.1 && sim < 2.0) && color_sim.at<cv::Vec3b>(h, w)[0] == 255)
-        depth_meters.at<float>(h, w) = 1.0;
-      // else if((real <= 0.1 || real >= 2.0) && (sim > 0.1 && sim < 2.0) && color_sim.at<cv::Vec3b>(h, w)[0] == 255)
-      //   depth_meters.at<float>(h, w) = 1.0;
-    }
-  }
+  // for (int h = 0; h < H; h++)
+  // {
+  //   for (int w = 0; w < W; w++)
+  //   {
+  //     float sim = depth_sim.at<float>(h, w);
+  //     float real = depth_meters.at<float>(h, w);
+  //     if((sim > 0.1 && sim < 2.0) && color_sim.at<cv::Vec3b>(h, w)[2] == 255)
+  //       depth_meters.at<float>(h, w) = 0.0;
+  //     else if((sim > 0.1 && sim < 2.0) && color_sim.at<cv::Vec3b>(h, w)[0] == 255)
+  //       depth_meters.at<float>(h, w) = 1.0;
+  //     // else if((real <= 0.1 || real >= 2.0) && (sim > 0.1 && sim < 2.0) && color_sim.at<cv::Vec3b>(h, w)[0] == 255)
+  //     //   depth_meters.at<float>(h, w) = 1.0;
+  //   }
+  // }
 
-  ROS_INFO_STREAM("error rate of best = " << best_hypo._wrong_ratio);
+  // ROS_INFO_STREAM("error rate of best = " << best_hypo._wrong_ratio);
 
-  cv::imshow("color", depth_meters);
-  cv::waitKey(6);
+  // cv::imshow("color", depth_meters);
+  // cv::waitKey(6);
 
   // best_hypo.print();
 

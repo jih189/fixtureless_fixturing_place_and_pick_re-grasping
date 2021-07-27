@@ -34,7 +34,7 @@ class Fetch_Robot():
         self.viewboxname = "viewbox"
 
         self.group_name = "arm"
-        self.group = moveit_commander.MoveGroupCommander(self.group_name)
+        self.group = moveit_commander.MoveGroupCommander(self.group_name, , wait_for_servers=60.0)
 
         self.display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory, queue_size=10)
         self.display_place_robot_state_publisher = rospy.Publisher('/move_group/display_place_robot_state', moveit_msgs.msg.DisplayRobotState, queue_size=10)
@@ -337,6 +337,28 @@ class Fetch_Robot():
 
     def removeViewBox(self):
         self.scene.remove_world_object(self.viewboxname)
+
+    def addCollisionObject(self, objectname, transform, filename):
+        trans,rot = transform
+        
+        object_pose = PoseStamped()
+        object_pose.header.frame_id = self.robot.get_planning_frame()
+        object_pose.pose.position.x = trans[0]
+        object_pose.pose.position.y = trans[1]
+        object_pose.pose.position.z = trans[2]
+
+        object_pose.pose.orientation.x = rot[0]
+        object_pose.pose.orientation.y = rot[1]
+        object_pose.pose.orientation.z = rot[2]
+        object_pose.pose.orientation.w = rot[3]
+
+        self.scene.add_mesh(objectname, object_pose, filename, size=(0.001,0.001,0.001))
+        start = rospy.get_time()
+        second = rospy.get_time()
+        while (second - start) < self.timeout and not rospy.is_shutdown():
+            if objectname in self.scene.get_known_object_names():
+                break
+            second = rospy.get_time()
             
     def addManipulatedObject(self, objectname, x, y, z, rx, ry, rz, rw, filename):
         touch_links = self.robot.get_link_names(group=self.group_name)

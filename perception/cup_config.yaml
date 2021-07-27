@@ -1,0 +1,159 @@
+##Motoman left arm realsense
+cam_K: [527.3758609346917, 0.0, 326.6388366771264, 0.0, 523.6181455086474, 226.4866800158784, 0.0, 0.0, 1.0]
+# K used in blender
+# cam_K: [619.2578, 0.0, 320,
+#         0.0, 619.2578, 240,
+#         0.0, 0.0, 1.0]
+
+
+
+# Motoman left arm camera xyz, q(xyzw)
+cam1_in_leftarm: [-0.004269333556294441,-0.007711530197411776,-0.08680825680494308,-0.006834600586444139,0.9986741542816162,0.04945759475231171,-0.01254322659224272]
+
+handbase_in_palm: [0    ,               -1             ,       0 ,0.009000016543892384,
+                  -0              ,      0          ,          1  ,0.08699987083673477,
+                  -1     ,              -0       ,             0 , 0.01899999752640724,
+                  -0         ,          -0         ,          -0      ,              1
+]
+
+out_dir: /home/lambda/icra20-hand-object-pose/output
+rgb_path: /home/lambda/icra20-hand-object-pose/example/rgb7.png
+depth_path: /home/lambda/icra20-hand-object-pose/example/depth7.png
+palm_in_baselink: /home/lambda/icra20-hand-object-pose/example/palm_in_base7.txt
+leftarm_in_base: /home/lambda/icra20-hand-object-pose/example/arm_left_link_7_t_7.txt
+
+model_name: cup
+object_model_path: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/object/cup.ply
+object_mesh_path: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/object/cup.obj
+ppf_path: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/object/ppf_cup
+
+#For Simulation data
+cam_in_world: /home/lambda/icra20-hand-object-pose/simulation_data/cuboid_whitehand/000626/cam_in_world_pose.txt
+handbase_in_world: /home/lambda/icra20-hand-object-pose/simulation_data/cuboid_whitehand/000626/visual_0_base_link.txt
+
+
+object_symmetry:   # 0 means complete symmetric, 360 means not symmetric
+  cup:
+    x: 180
+    y: 0
+    z: 180
+  tless3:
+    x: 360
+    y: 0
+    z: 360
+  ellipse:
+    x: 180
+    y: 180
+    z: 180
+  cylinder:
+    x: 180
+    y: 180
+    z: 0
+  cuboid:
+    x: 90
+    y: 180
+    z: 180
+  mustard:
+    x: 360
+    y: 360
+    z: 360
+  tomato:
+    x: 0
+    y: 0
+    z: 0
+
+down_sample:
+  leaf_size: 0.005
+
+remove_noise:
+  radius: 0.02
+  min_number: 50
+
+
+
+#NOTE: for simulation
+hand_match:
+  finger_min_match: 1    #Near handbase left/right fingers
+  finger_dist_thres: 0.005
+  finger_normal_angle: 30
+  check_normal: true
+  max_outter_pts: 300
+  outter_pt_dist: 0.002
+  outter_pt_dist_weight: 1
+  planar_dist_thres: 0.0001
+  hand_base_icp_dist: 0.002
+  pso:
+    n_pop: 10
+    n_gen: 15
+    check_freq: 10     # Use big value to let it run until max iter
+    pso_par_c_cog: 0.1
+    pso_par_c_soc: 0.9
+    pso_par_initial_w: 0      # Particle velocity initial scaling factor
+lcp:
+  dist: 0.001
+  normal_angle: 10
+
+
+# #NOTE: for real
+# hand_match:
+#   finger_min_match: 1    #Near handbase left/right fingers
+#   finger_dist_thres: 0.03
+#   finger_normal_angle: 40
+#   check_normal: true
+#   max_outter_pts: 300
+#   outter_pt_dist: 0.002
+#   outter_pt_dist_weight: 1
+#   planar_dist_thres: 0.0001
+#   hand_base_icp_dist: 0.0002
+#   pso:
+#     n_pop: 10
+#     n_gen: 10
+#     check_freq: 10     # Use big value to let it run until max iter
+#     pso_par_c_cog: 0.1
+#     pso_par_c_soc: 0.9
+#     pso_par_initial_w: 0      # Particle velocity initial scaling factor
+# lcp:
+#   dist: 0.001
+#   normal_angle: 10
+
+wrong_ratio_threhold: 5.0
+pose_estimator_wrong_ratio: 1
+render_roi_weight: 2.0
+render_keep_hypo: 0.3
+near_hand_dist: 0.005
+pose_estimator_use_physics: true
+pose_estimator_high_confidence_thres: 0.8
+icp_dist_thres: 0.01
+icp_angle_thres: 45
+collision_thres: 0.4
+non_touch_dist: 0.01
+collision_finger_dist: 0.012
+collision_finger_volume_ratio: 0.25
+
+super4pcs_sample_size: 300    #sample points on Q(model)
+super4pcs_overlap: 0.2
+super4pcs_delta: 0.003
+super4pcs_dispersion: 0.5
+super4pcs_success_quadrilaterals: 10   #Increase for better accuracy but slower
+super4pcs_max_normal_difference: -1    #Maximum angle (degrees) between corresponded normals.
+super4pcs_max_color_distance: -1
+super4pcs_max_time_seconds: 5
+
+urdf_path: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/robots/fetch_hand.urdf
+# urdf_path: /home/lambda/icra20-hand-object-pose/meshes/hand_T42b.urdf
+
+
+#!NOTE convex_mesh is an approximated mesh for efficient collision checking. Can use the same path as "mesh" if dont worry about speed.
+Hand:
+  gripper_link:
+    mesh: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/gripper_link.obj
+    convex_mesh: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/gripper_link.obj
+    cloud: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/gripper_link.ply
+  r_gripper_finger_link:
+    mesh: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/r_gripper_finger_link.obj
+    convex_mesh: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/r_gripper_finger_link.obj
+    cloud: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/r_gripper_finger_link.ply
+  l_gripper_finger_link:
+    mesh: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/l_gripper_finger_link.obj
+    convex_mesh: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/l_gripper_finger_link.obj
+    cloud: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/l_gripper_finger_link.ply

@@ -1,0 +1,15 @@
+this is the instruction to generate the pointcloud and point pair feature of the objects.
+assume we object like cup called "cup.obj"
+1. generate the point cloud of the cup by running
+	pcl_mesh2pcd cup.obj cup.pcd -leaf_size 0.001
+2. convert the pointcloud to ply format by running
+	pcl_pcd2ply cup.pcd cup.ply
+3. compute the normal of the point cloud by running
+	mkdir result
+	rosrun icra20_manipulation_pose computePPF cup.ply result
+4. above command will generate point pair features as "resultppf" and the pointcloud with normal as model.py in the result directory,
+to check how the normal looks like. Running
+	pcl_ply2pcd model.ply model.pcd
+	pcl_viewer model.pcd -normals 1
+so you can see the normal.
+5. change the name of resultppf to ppf_cup

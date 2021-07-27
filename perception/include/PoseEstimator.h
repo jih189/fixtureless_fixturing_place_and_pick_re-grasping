@@ -19,7 +19,7 @@ public:
   bool runSuper4pcs(const std::map<std::vector<int>, std::vector<std::pair<int, int> > > &ppfs, const Eigen::Matrix4f &init_pose);
   bool runUpdate(std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &inputs);
   void refineByICP();
-  void selectBest(PoseHypo &best_hypo, HandT42 *hand);
+  void selectBest(PoseHypo &best_hypo);//, HandT42 *hand);
   int getNumOfHypos();
   void selectIndex(PoseHypo &selected_hypo, int index);
   void clusterPoses(float angle_diff, float dist_diff, bool assign_id);
@@ -29,6 +29,7 @@ public:
   void registerMesh(std::string mesh_dir, std::string name, const Eigen::Matrix4f &pose);
   void registerHandMesh(Hand *hand);
   void rejectByRender(float projection_thres, HandT42 *hand);
+  void rejectByRender(float projection_thres);
 
 
 

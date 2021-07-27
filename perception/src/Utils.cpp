@@ -411,6 +411,7 @@ void calNormalIntegralImage(boost::shared_ptr<pcl::PointCloud<PointT>> cloud, in
       ne.setNormalEstimationMethod(ne.SIMPLE_3D_GRADIENT );  // better than AVERAGE_DEPTH_CHANGE, speed similar
   }
 
+
   ne.setMaxDepthChangeFactor(max_depth_change_factor);
   ne.setNormalSmoothingSize(smooth_size);
   ne.setInputCloud(cloud);

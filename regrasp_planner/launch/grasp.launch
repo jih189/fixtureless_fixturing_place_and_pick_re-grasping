@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<launch>
+    <node name="object_segementation_filter_node" pkg="object_segmentation" type="mask_filter_server.py" output="screen" />
+    <node name="pose_estimation_node" pkg="icra20_manipulation_pose" type="pose_estimation" args="$(find icra20_manipulation_pose)/cup_config.yaml" output="screen" />
+</launch>
