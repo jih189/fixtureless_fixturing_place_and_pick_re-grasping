@@ -20,15 +20,14 @@ if __name__=='__main__':
     rospy.init_node('grasp_node')
 
 
-    # tf_helper = TF_Helper()
+    tf_helper = TF_Helper()
 
     # get the object searcher trigger to control the tracker
-    # rospy.wait_for_service('searchObject')
-    # objectSearcherTrigger = rospy.ServiceProxy('searchObject', SearchObject)
+    rospy.wait_for_service('searchObject')
+    objectSearcherTrigger = rospy.ServiceProxy('searchObject', SearchObject)
 
-    # robot = Fetch_Robot()
+    robot = Fetch_Robot()
 
-    # robot.goto_pose(0.34969, 0.20337, 0.92054, 0.081339, 0.012991, -0.63111, 0.77131)
 
     # ## launch the tracker
     # objectSearcherTrigger(True, 1, Pose())
