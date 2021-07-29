@@ -5,10 +5,11 @@ import rospy
 import moveit_commander
 import moveit_msgs.msg
 from moveit_msgs.srv import GetStateValidity, GetStateValidityRequest
-from geometry_msgs.msg import Pose, PoseStamped
+from geometry_msgs.msg import Pose, PoseStamped, TwistStamped
 import copy
 from controller_manager_msgs.srv import SwitchController, ListControllers
 import threading
+from rospy.core import is_shutdown
 import tf
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -46,10 +47,12 @@ class Fetch_Robot():
         # need to check whether the Fetch is in simulation or real world
         if self._sim == True:
             self.gripper_client = actionlib.SimpleActionClient("/gripper_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
+            self.cartesian_motion_controller_publisher = rospy.Publisher('my_cartesian_motion_controller/target_frame', PoseStamped, queue_size=5)
         else:
             self.gripper_client = actionlib.SimpleActionClient("/gripper_controller/gripper_action", GripperCommandAction)
+            self.cartesian_motion_controller_publisher = rospy.Publisher('/arm_controller/cartesian_twist/command', TwistStamped, queue_size=10)
 
-        self.cartesian_motion_controller_publisher = rospy.Publisher('my_cartesian_motion_controller/target_frame', PoseStamped, queue_size=5)
+
 
         self.joint_names = ['r_gripper_finger_joint']
         if self._sim == True:
@@ -195,10 +198,35 @@ class Fetch_Robot():
         while not rospy.is_shutdown():
             rospy.Rate(10).sleep()
             self.targetFrame.header.stamp = rospy.Time()
-            self.cartesian_motion_controller_publisher.publish(self.targetFrame)
+            
+            if self._sim == True:
+                self.cartesian_motion_controller_publisher.publish(self.targetFrame)
+            else:
+                self.cartesian_motion_controller_publisher.publish(self.getTwistError())
+                
             transerror, rotationerror = self.getError()
             if(transerror < self.transThreshold and rotationerror < self.rotThreshold):
                 break
+
+    def getTwistError(self, frame_id='torso_link'):
+        trans1 = [self.targetFrame.pose.position.x, self.targetFrame.pose.position.y, self.targetFrame.pose.position.z]
+        rot1 = [self.targetFrame.pose.orientation.x, self.targetFrame.pose.orientation.y, self.targetFrame.pose.orientation.z, self.targetFrame.pose.orientation.w]
+        trans2, rot2 = self.getCurrentFrame()
+
+        tran_error = np.array(trans1) - np.array(trans2)
+        rot1_mat = tf.transformations.quaternion_matrix(rot1)[:3,:3]
+        rot2_mat = tf.transformations.quaternion_matrix(rot2)[:3,:3]        
+
+        rot_error = R.from_dcm(np.dot(rot1_mat, rot2_mat.transpose())).as_euler('xyz')
+        twist_cmd = TwistStamped()
+        twist_cmd.header.frame_id = frame_id
+        twist_cmd.twist.linear.x =  tran_error[0]
+        twist_cmd.twist.linear.y =  tran_error[1]
+        twist_cmd.twist.linear.z=  tran_error[2]
+        twist_cmd.twist.angular.x =  rot_error[0]
+        twist_cmd.twist.angular.y =  rot_error[1]
+        twist_cmd.twist.angular.z =  rot_error[2]
+        return twist_cmd
 
     # this function returns the error between target frame and current frame
     def getError(self):
@@ -465,6 +493,24 @@ class Fetch_Robot():
 
         return plan, fraction
 
+    # def plan_twist(self, twist_pos, frame_id, time):
+    #     L, A = twist_pos
+    #     twist_cmd = TwistStamped()
+    #     twist_cmd.header.frame_id = frame_id
+    #     twist_cmd.twist.linear.x =  L.x
+    #     twist_cmd.twist.linear.y =  L.y
+    #     twist_cmd.twist.linear.z=  L.z
+    #     twist_cmd.twist.angular.x =  A.x
+    #     twist_cmd.twist.angular.y =  A.y
+    #     twist_cmd.twist.angular.z =  A.z
+        
+    #     rate = rospy.Rate(10) #10hz
+    #     start = rospy.get_time()
+    #     second = rospy.get_time()
+    #     while (second - start) < time and not rospy.is_shutdown():
+    #         self.arm_controler_publisher.publish(twist_cmd)
+    #         rate.sleep()
+    
     def display_trajectory(self, plan):
         robot = self.robot
         display_trajectory_publisher = self.display_trajectory_publisher
