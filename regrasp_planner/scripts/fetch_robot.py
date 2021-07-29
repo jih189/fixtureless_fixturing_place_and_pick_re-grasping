@@ -18,10 +18,13 @@ from sensor_msgs.msg import JointState
 from trac_ik_python.trac_ik import IK
 import random
 import actionlib
-from control_msgs.msg import JointTrajectoryAction, JointTrajectoryGoal, FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal, GripperCommandAction, GripperCommandGoal
+
 
 class Fetch_Robot():
-    def __init__(self):
+    def __init__(self, sim=True):
+
+        self._sim = sim
 
         moveit_commander.roscpp_initialize(sys.argv)
         ## instatiate a robotCommander object.
@@ -39,16 +42,27 @@ class Fetch_Robot():
         self.display_trajectory_publisher = rospy.Publisher('/move_group/display_planned_path', moveit_msgs.msg.DisplayTrajectory, queue_size=10)
         self.display_place_robot_state_publisher = rospy.Publisher('/move_group/display_place_robot_state', moveit_msgs.msg.DisplayRobotState, queue_size=10)
         self.display_pick_robot_state_publisher = rospy.Publisher('/move_group/display_pick_robot_state', moveit_msgs.msg.DisplayRobotState, queue_size=10)
-        self.cartesian_motion_controller_publisher = rospy.Publisher('my_cartesian_motion_controller/target_frame', PoseStamped, queue_size=5)
-        # self.gripper_publisher = rospy.Publisher('gripper_controller/command', JointTrajectory, queue_size=5)
-        self.joint_names = ['r_gripper_finger_joint']
-        self.open_joints = [0.04]
-        self.close_joints = [-0.04]
-        self.client = actionlib.SimpleActionClient("/gripper_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
 
-        # rospy.loginfo('Waiting for joint trajectory action')    
-        # self.client.wait_for_server()
-        # rospy.loginfo('Found joint trajectory action!')
+        # need to check whether the Fetch is in simulation or real world
+        if self._sim == True:
+            self.gripper_client = actionlib.SimpleActionClient("/gripper_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
+        else:
+            self.gripper_client = actionlib.SimpleActionClient("/gripper_controller/gripper_action", GripperCommandAction)
+
+        self.cartesian_motion_controller_publisher = rospy.Publisher('my_cartesian_motion_controller/target_frame', PoseStamped, queue_size=5)
+
+        self.joint_names = ['r_gripper_finger_joint']
+        if self._sim == True:
+            self.open_joints = [0.04]
+            self.close_joints = [-0.04]
+        else:
+            self.open_joints = 0.4
+            self.close_joints = 0.0
+        
+
+        rospy.loginfo('Waiting for gripper controller')    
+        self.gripper_client.wait_for_server()
+        rospy.loginfo('Found gripper controller!')
 
         planning_frame = self.group.get_planning_frame()
         print "=========== Reference frame:%s" % planning_frame
@@ -72,9 +86,6 @@ class Fetch_Robot():
 
         # used to get current robot state
         self.tf_listener = tf.TransformListener()
-
-        # self.traj = JointTrajectory()
-        # self.traj.joint_names = ['r_gripper_finger_joint']
 
         self.ik_solver = IK('torso_lift_link', 'gripper_link')
 
@@ -142,42 +153,39 @@ class Fetch_Robot():
             return None
 
     def openGripper(self,pos = None):
-        # pt = JointTrajectoryPoint()
-        # pt.positions = [0.04]
-        # pt.time_from_start = rospy.Duration(1.0)
-        # self.traj.points = [pt]
-
-        # r = rospy.Rate(10)
-        # last_value = self.getFingerValue()
-        # while not rospy.is_shutdown():
-        #     self.traj.header.stamp = rospy.Time.now()
-        #     self.gripper_publisher.publish(self.traj)
-        #     r.sleep()
-        #     if self.getFingerValue() > 0.036:
-        #         last_value = self.getFingerValue()
-        #         break
-        # return last_value
         if pos == None:
             pos = self.open_joints
-        goal = FollowJointTrajectoryGoal()
-        goal.trajectory.joint_names = self.joint_names
-        point = JointTrajectoryPoint()
-        point.positions = pos
-        point.time_from_start = rospy.Duration(1)
-        goal.trajectory.points.append(point)
-        self.client.send_goal_and_wait(goal)
-            
 
+        if self._sim == True:
+            goal = FollowJointTrajectoryGoal()
+            goal.trajectory.joint_names = self.joint_names
+            point = JointTrajectoryPoint()
+            point.positions = pos
+            point.time_from_start = rospy.Duration(1)
+            goal.trajectory.points.append(point)
+            self.gripper_client.send_goal_and_wait(goal)
+        else:
+            goal = GripperCommandGoal()
+            goal.command.position = float(pos)
+            self.gripper_client.send_goal_and_wait(goal)
+    
     def closeGripper(self,pos=None):
         if pos == None:
             pos = self.close_joints 
-        goal = FollowJointTrajectoryGoal()
-        goal.trajectory.joint_names = self.joint_names
-        point = JointTrajectoryPoint()
-        point.positions = pos
-        point.time_from_start = rospy.Duration(1)
-        goal.trajectory.points.append(point)
-        self.client.send_goal_and_wait(goal)
+
+        if self._sim == True:
+            goal = FollowJointTrajectoryGoal()
+            goal.trajectory.joint_names = self.joint_names
+            point = JointTrajectoryPoint()
+            point.positions = pos
+            point.time_from_start = rospy.Duration(1)
+            goal.trajectory.points.append(point)
+            self.gripper_client.send_goal_and_wait(goal)
+        else:
+            goal = GripperCommandGoal()
+            goal.command.position = float(pos)
+            self.gripper_client.send_goal_and_wait(goal)
+
 
     def setErrorThreshold(self, transThreshold, rotThreshold):
         self.transThreshold = transThreshold

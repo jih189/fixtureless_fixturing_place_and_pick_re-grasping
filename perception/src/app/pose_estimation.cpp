@@ -164,9 +164,8 @@ void publish_object_state(int* publish_rate){
 bool searchObjectTrig(icra20_manipulation_pose::SearchObject::Request &req,
         icra20_manipulation_pose::SearchObject::Response &res){
 
-  target_pose.setIdentity();
-
   if(req.startsearch){
+    target_pose.setIdentity();
     isrunning = true;
   }else{
     isrunning = false;

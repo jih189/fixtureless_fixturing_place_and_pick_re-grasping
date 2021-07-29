@@ -157,18 +157,16 @@ def resetEnv(clientID, arm, gripper):
     # moveObjectTo(clientID, "base_link_respondable", [-0.011241, -0.65001, 0.18444], [-9.568027599016204e-05, -0.7104805111885071, 0.003217362565919757, 0.7037094831466675])
 
     # move table away
-    moveObjectTo(clientID, "Table", [-0.025, 0.825, 0.368], [0.0,0.0,0.0,0.0]) # it was [-0.025, 0.5, 0.35]
-    moveObjectTo(clientID, "Cuboid0", [0.021, 0.763, 0.7775], [0.0,0.0,0.0,0.0]) # it was [0.021, 0.463, 0.7775]
+    moveObjectTo(clientID, "Table", [1.526, -1.3749, 0.3944], [0.5,0.5,0.5,-0.5]) # it was [-0.025, 0.5, 0.35]
+    moveObjectTo(clientID, "poing", [0.7768, 2.093, 0.8338], [0.70679,-0.0089313, 0.70731,0.0089]) # it was [0.021, 0.463, 0.7775]
     
     arm.reset()
     gripper.open()
 
-    moveObjectTo(clientID, "Table", [-0.025, 0.525, 0.368], [0.0,0.0,0.0,0.0]) # it was [-0.025, 0.5, 0.35]
-    moveObjectTo(clientID, "Cuboid0", [0.021, 0.463, 0.7775], [0.0,0.0,0.0,0.0]) # it was [0.021, 0.463, 0.7775]    
+    moveObjectTo(clientID, "Table", [1.0498, 0.075, 0.3946], [0.5,0.5,0.5,-0.5]) # it was [-0.025, 0.5, 0.35]
+    moveObjectTo(clientID, "poing", [0.7768, 0.093, 0.8338], [0.70679,-0.0089313, 0.70731,0.0089]) # it was [0.021, 0.463, 0.7775]    
 
-    gripper.close()
-    # move table to in front of the robot
-    moveObjectTo(clientID, "Table", [0.725, -0.6, 0.368], [0.0,0.0,0.0,0.0]) # it was [-0.025, 0.5, 0.35]
+    # gripper.close()
 
 
 if __name__ == "__main__":
