@@ -141,7 +141,7 @@ class Fetch_Robot():
         else:
             return None
 
-    def openGripper(self):
+    def openGripper(self,pos = None):
         # pt = JointTrajectoryPoint()
         # pt.positions = [0.04]
         # pt.time_from_start = rospy.Duration(1.0)
@@ -157,42 +157,24 @@ class Fetch_Robot():
         #         last_value = self.getFingerValue()
         #         break
         # return last_value
-
+        if pos == None:
+            pos = self.open_joints
         goal = FollowJointTrajectoryGoal()
         goal.trajectory.joint_names = self.joint_names
         point = JointTrajectoryPoint()
-        point.positions = self.open_joints
+        point.positions = pos
         point.time_from_start = rospy.Duration(1)
         goal.trajectory.points.append(point)
         self.client.send_goal_and_wait(goal)
             
 
-    def closeGripper(self):
-        # pt = JointTrajectoryPoint()
-        # pt.positions = [-0.02]
-        # pt.time_from_start = rospy.Duration(1.0)
-        # self.traj.points = [pt]
-
-        # r = rospy.Rate(10)
-        # last_value = self.getFingerValue()
-        # stablenum = 0
-        # while not rospy.is_shutdown():
-        #     self.traj.header.stamp = rospy.Time.now()
-        #     self.gripper_publisher.publish(self.traj)
-        #     r.sleep()
-        #     # print "error ", abs(last_value - self.getFingerValue()) 
-        #     if abs(last_value - self.getFingerValue()) < 0.0001:
-        #         stablenum+=1
-        #     else:
-        #         stablenum = 0
-        #     if stablenum == 5 or abs(pt.positions[0] - self.getFingerValue()) < 0.0001:
-        #         break
-        #     last_value = self.getFingerValue()
-        # return last_value
+    def closeGripper(self,pos=None):
+        if pos == None:
+            pos = self.close_joints 
         goal = FollowJointTrajectoryGoal()
         goal.trajectory.joint_names = self.joint_names
         point = JointTrajectoryPoint()
-        point.positions = self.close_joints
+        point.positions = pos
         point.time_from_start = rospy.Duration(1)
         goal.trajectory.points.append(point)
         self.client.send_goal_and_wait(goal)
@@ -229,8 +211,8 @@ class Fetch_Robot():
         return trans, angle
 
     # this function is used by cartisian motion controller
-    def moveToFrame(self, targetposition, targetorientation):
-
+    def moveToFrame(self, transform):
+        targetposition, targetorientation = transform 
         self.setTargetFrame(targetposition, targetorientation)
 
         transerror, rotationerror = self.getError()
@@ -338,28 +320,29 @@ class Fetch_Robot():
     def removeViewBox(self):
         self.scene.remove_world_object(self.viewboxname)
 
-    def addCollisionObject(self, objectname, transform, filename):
-        trans,rot = transform
-        
+    def addCollisionObject(self, objectname, transfrom_Q, filename, size_scale = .001):
+
+        t,r = transfrom_Q
+
         object_pose = PoseStamped()
         object_pose.header.frame_id = self.robot.get_planning_frame()
-        object_pose.pose.position.x = trans[0]
-        object_pose.pose.position.y = trans[1]
-        object_pose.pose.position.z = trans[2]
+        object_pose.pose.position.x = t[0]
+        object_pose.pose.position.y = t[1]
+        object_pose.pose.position.z = t[2]
 
-        object_pose.pose.orientation.x = rot[0]
-        object_pose.pose.orientation.y = rot[1]
-        object_pose.pose.orientation.z = rot[2]
-        object_pose.pose.orientation.w = rot[3]
+        object_pose.pose.orientation.x = r[0]
+        object_pose.pose.orientation.y = r[1]
+        object_pose.pose.orientation.z = r[2]
+        object_pose.pose.orientation.w = r[3]
 
-        self.scene.add_mesh(objectname, object_pose, filename, size=(0.001,0.001,0.001))
+        self.scene.add_mesh(objectname, object_pose, filename, size=(size_scale,size_scale,size_scale))
         start = rospy.get_time()
         second = rospy.get_time()
         while (second - start) < self.timeout and not rospy.is_shutdown():
             if objectname in self.scene.get_known_object_names():
                 break
             second = rospy.get_time()
-            
+
     def addManipulatedObject(self, objectname, x, y, z, rx, ry, rz, rw, filename):
         touch_links = self.robot.get_link_names(group=self.group_name)
         # need to add the links which are not belong to the group

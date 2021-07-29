@@ -68,6 +68,10 @@ class TF_Helper():
         self.listener = tf.TransformListener()
         self.br = tf.TransformBroadcaster()
 
+    def pubTransform(self, transform):
+        t, q = transform
+        self.br.sendTransform(t, q, rospy.Time.now(), 'test', 'base_link')
+
     def getTransform(self, parent_link, child_link):
         self.listener.waitForTransform(parent_link, child_link, rospy.Time(), rospy.Duration(10.0))
         trans, rot = self.listener.lookupTransform(parent_link, child_link, rospy.Time())
@@ -89,3 +93,37 @@ class TF_Helper():
         trans_mat = tf.transformations.translation_matrix(trans)
         rot_mat = tf.transformations.quaternion_matrix(rot)
         return np.dot(trans_mat, rot_mat)
+
+class Panda_Helper():
+    def __init__(self):
+        pass
+
+    def PandaPosMax_t_PosMat(self, panda_posmtx):
+        """The panda pose matrix needs to be scaled and transposed to be a normal pose matrix form."""
+        I =  np.identity(4) #TODO: make it for any size matix. 
+        posmtx = I.dot(panda_posmtx) #matrix of panda in np form.  
+        
+        posmtx[3][0] = posmtx[3][0] / 1000
+        posmtx[3][1] = posmtx[3][1] / 1000
+        posmtx[3][2] = posmtx[3][2] / 1000
+      
+        return np.transpose(posmtx)
+
+    def RotateGripper(self,posmtx):
+        """ The gripper pose given from panda has is orientated different from the real robot. 
+        This funciton Rotates the gipper pose given, about the Z or Y axis to correct it.
+        """
+        
+        rotate = np.identity(4)
+        #Rotate about z 
+        # rotate[0][0] = -1 
+        # rotate[0][1] = 0 
+        # rotate[1][0] = 0 
+        # rotate[1][1] = -1
+        #Rotate about Y
+        rotate[0][0] = -1 
+        rotate[0][2] = 0 
+        rotate[2][0] = 0 
+        rotate[2][2] = -1
+        posmtx = np.dot(posmtx,rotate)
+        return posmtx
