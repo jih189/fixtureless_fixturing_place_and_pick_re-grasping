@@ -175,7 +175,7 @@ class Fetch_Robot():
     def closeGripper(self,pos=None):
         if pos == None:
             pos = self.close_joints 
-
+        
         if self._sim == True:
             goal = FollowJointTrajectoryGoal()
             goal.trajectory.joint_names = self.joint_names

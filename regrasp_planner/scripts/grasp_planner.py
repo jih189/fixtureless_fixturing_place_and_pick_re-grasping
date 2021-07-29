@@ -33,6 +33,7 @@ def find_grasping_point(planner,tran_base_object ):
     print("Going through this many grasp pose: " ,len(planner.freegriprotmats))
     for i in range(0,len(planner.freegriprotmats)):
         obj_grasp_pos = planner.freegriprotmats[i] #Gives transforom matrix of grasp based on objrct ref  
+        jaw_width = planner.freegripjawwidth[i] / 1000 #Give jaw_with in non_panda form
         #planner.showHand( planner.freegripjawwidth[i], obj_grasp_pos, base)
 
         #change obj_pos from panda config to normal. Change pos rep to Quatorian. 
@@ -56,13 +57,13 @@ def find_grasping_point(planner,tran_base_object ):
             continue
         else:
             world_grasp_pos_Q = transformProduct(tran_base_object, obj_grasp_pos_Q)
-            return world_grasp_pos_Q, t_g_p_q
+            return world_grasp_pos_Q, t_g_p_q , jaw_width
 
 
 def move_to_pickup(robot):
     #Move to starting position
     #robot.goto_pose(0.34969, 0.20337, 0.92054, 0.081339, 0.012991, -0.63111, 0.77131)
-    #robot.openGripper()
+    robot.openGripper()
     # robot.closeGripper([-0.01])
 
     # Creates a base simulator in the world. 
@@ -76,14 +77,23 @@ def move_to_pickup(robot):
 
     tran_base_object = tf_helper.getTransform('/base_link', '/cup') #return tuple (trans,rot) of parent_lin to child_link
     #Go through all grasp pos and find a valid pos. 
-    world_grasp_pos_pre, torso_grasp_pos_pre = find_grasping_point(planner, tran_base_object)
-    world_grasp_pos = transformProduct(world_grasp_pos_pre, [[0.12,0,0],[0,0,0,1]])
-    torso_grasp_pos = transformProduct(torso_grasp_pos_pre, [[0.12,0,0],[0,0,0,1]])
-
+    world_grasp_pos_pre, torso_grasp_pos_pre, gripper_width = find_grasping_point(planner, tran_base_object)
+    world_grasp_pos_Q = transformProduct(world_grasp_pos_pre, [[0.12,0,0],[0,0,0,1]]) 
+    #torso_grasp_pos = transformProduct(torso_grasp_pos_pre, [[0.12,0,0],[0,0,0,1]])
+        
     plan = robot.planto_pose(world_grasp_pos_pre)
     robot.display_trajectory(plan)
     raw_input("check")
     robot.execute_plan(plan)
+
+    raw_input("check")
+    robot.moveToFrame(world_grasp_pos_Q)
+    
+    if robot._sim == True:
+        gripper_width = gripper_width -0.04
+    else:
+        gripper_width = gripper_width/2
+    robot.closeGripper(gripper_width)
 
     # robot.switchController('my_cartesian_motion_controller', 'arm_controller')
     # while not rospy.is_shutdown():
