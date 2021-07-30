@@ -155,6 +155,7 @@ class Fetch_Robot():
         else:
             return None
 
+    # set the distance between fingers in meter unit
     def setGripperWidth(self, pos):
         if self._sim == True:
             goal = FollowJointTrajectoryGoal()

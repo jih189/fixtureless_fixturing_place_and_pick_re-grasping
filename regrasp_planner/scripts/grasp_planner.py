@@ -16,7 +16,7 @@ import tf
 import pandaplotutils.pandactrl as pandactrl
 from database import dbaccess as db
 
-from  tf_util import TF_Helper, Panda_Helper, transformProduct, getMatrixFromQuaternionAndTrans, findCloseTransform, getTransformFromPoseMat
+from  tf_util import *
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_python import MoveGroupInterface, PlanningSceneInterface
 import moveit_commander
@@ -29,7 +29,6 @@ from regrasp_planner import RegripPlanner
 def find_grasping_point(planner,tran_base_object):
     #TODO filter out based on place ment so we know which is the actuall grasp
 
-    pd_helper = Panda_Helper()
     print("Going through this many grasp pose: " ,len(planner.freegriprotmats))
     for i in range(0,len(planner.freegriprotmats)):
         obj_grasp_pos = planner.freegriprotmats[i] #Gives transforom matrix of grasp based on objrct ref  
@@ -37,8 +36,8 @@ def find_grasping_point(planner,tran_base_object):
         #planner.showHand( planner.freegripjawwidth[i], obj_grasp_pos, base)
 
         #change obj_pos from panda config to normal. Change pos rep to Quatorian. 
-        obj_grasp_pos =  pd_helper.PandaPosMax_t_PosMat(obj_grasp_pos) 
-        obj_grasp_pos = pd_helper.RotateGripper(obj_grasp_pos)
+        obj_grasp_pos =  PandaPosMax_t_PosMat(obj_grasp_pos) 
+        obj_grasp_pos = RotateGripper(obj_grasp_pos)
         obj_grasp_pos_Q = getTransformFromPoseMat(obj_grasp_pos) #Tranfrom gripper posmatx to (trans,rot)
         obj_grasp_pos_Q =  transformProduct(obj_grasp_pos_Q, [[-0.06,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
 
