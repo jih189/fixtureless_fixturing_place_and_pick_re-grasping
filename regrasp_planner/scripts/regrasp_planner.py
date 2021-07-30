@@ -54,6 +54,8 @@ class RegripPlanner():
         self.__loadFreeTablePlacement()
         self.handtmp = None
 
+        self.objectid = self.gdb.loadIdObject(self.dbobjname)
+
 
     def __loadFreeAirGrip(self):
         """
@@ -94,8 +96,7 @@ class RegripPlanner():
             if len(result) != 0 and len(result) != 1:
                 for edge in list(itertools.combinations(np.array(result)[:,0], 2)):
                     if not self.regg.has_edge(*edge):
-                        self.regg.add_edge(*edge)
-        
+                        self.regg.add_edge(*edge)   
 
     def addGoalGrasp(self, goalhandwidth, goalrotmat4):
 
@@ -136,35 +137,67 @@ class RegripPlanner():
             result.append(path[1:-1])
         return result
 
-    # get the grasp pose of grasp ids under specific placement
-    def getGrasps(self, placementid, graspids):
+    # get all grasp poses in normal format and jawwdith in meter unit
+    # this function will return a list like
+    # [(pose1, jawwidth1), (pose2, jawwidth2), ...]
+    def getAllGrasps(self):
         results = []
-        for i in graspids:
-            sql = "SELECT freeairgrip.rotmat FROM freetabletopgrip, freeairgrip WHERE \
-                    freetabletopgrip.idfreeairgrip = freeairgrip.idfreeairgrip AND \
-                    freetabletopgrip.idfreetabletopplacement=%d AND freetabletopgrip.idfreeairgrip=%d" % (placementid, i)
-            result = dc.strToMat4(self.gdb.execute(sql)[0][0])
-            result = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * result
+        for grasppose, jawwidth in zip(self.freegriprotmats, self.freegripjawwidth): 
+
+            grasppose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * grasppose
             # need to convert it bakc to normal metrics
-            results.append(np.array([[result[0][0],result[1][0],result[2][0],result[3][0]/1000.0], \
-                                     [result[0][1],result[1][1],result[2][1],result[3][1]/1000.0], \
-                                     [result[0][2],result[1][2],result[2][2],result[3][2]/1000.0], \
-                                     [result[0][3],result[1][3],result[2][3],result[3][3]]]))
+            results.append((np.array([[grasppose[0][0],grasppose[1][0],grasppose[2][0],grasppose[3][0]/1000.0], \
+                                     [grasppose[0][1],grasppose[1][1],grasppose[2][1],grasppose[3][1]/1000.0], \
+                                     [grasppose[0][2],grasppose[1][2],grasppose[2][2],grasppose[3][2]/1000.0], \
+                                     [grasppose[0][3],grasppose[1][3],grasppose[2][3],grasppose[3][3]]]), jawwidth/1000.0))
         return results
 
-    def getPlacements(self, placementids):
+    # get the grasp pose of grasp ids under specific placement
+    # this function will return a list like
+    # [(pose1, jawwidth1), (pose2, jawwidth2), ...]
+    def getGraspsById(self, graspids):
+        results = []
+        for i in graspids:
+            sql = "SELECT freeairgrip.rotmat, freeairgrip.jawwidth FROM freeairgrip WHERE \
+                    freeairgrip.idfreeairgrip=%d AND freeairgrip.idobject=%d" % (i, self.objectid)
+            result = self.gdb.execute(sql)
+            if len(result) == 0:
+                continue
+            grasppose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * dc.strToMat4(result[0][0])
+            jawwidth = float(result[0][1])
+            # need to convert it back to normal metrics
+            results.append((np.array([[grasppose[0][0],grasppose[1][0],grasppose[2][0],grasppose[3][0]/1000.0], \
+                                     [grasppose[0][1],grasppose[1][1],grasppose[2][1],grasppose[3][1]/1000.0], \
+                                     [grasppose[0][2],grasppose[1][2],grasppose[2][2],grasppose[3][2]/1000.0], \
+                                     [grasppose[0][3],grasppose[1][3],grasppose[2][3],grasppose[3][3]]]), jawwidth))
+        return results
+
+    # this function will return all placement poses in normal format
+    def getAllPlacements(self):
+        results = []
+        for placementpose in self.tpsmat4s:
+            results.append(np.array([[placementpose[0][0],placementpose[1][0],placementpose[2][0],placementpose[3][0]/1000.0], \
+                                     [placementpose[0][1],placementpose[1][1],placementpose[2][1],placementpose[3][1]/1000.0], \
+                                     [placementpose[0][2],placementpose[1][2],placementpose[2][2],placementpose[3][2]/1000.0], \
+                                     [placementpose[0][3],placementpose[1][3],placementpose[2][3],placementpose[3][3]]]))
+        return results
+
+    # get placements in normal format with list of placement id
+    def getPlacementsById(self, placementids):
         results = []
         for i in placementids:
             sql = "SELECT freetabletopplacement.rotmat FROM freetabletopplacement WHERE \
-                    freetabletopplacement.idfreetabletopplacement=%d" % i
-            result = dc.strToMat4(self.gdb.execute(sql)[0][0])
+                    freetabletopplacement.idfreetabletopplacement=%d AND freetabletopplacement.idobject=%d" % (i, self.objectid)
+            result = self.gdb.execute(sql)
+            if len(result) == 0:
+                continue
+            placementpose = dc.strToMat4(result[0][0])
             # need to convert it back to normal metrics
-            results.append(np.array([[result[0][0],result[1][0],result[2][0],result[3][0]/1000.0], \
-                                     [result[0][1],result[1][1],result[2][1],result[3][1]/1000.0], \
-                                     [result[0][2],result[1][2],result[2][2],result[3][2]/1000.0], \
-                                     [result[0][3],result[1][3],result[2][3],result[3][3]]]))
+            results.append(np.array([[placementpose[0][0],placementpose[1][0],placementpose[2][0],placementpose[3][0]/1000.0], \
+                                     [placementpose[0][1],placementpose[1][1],placementpose[2][1],placementpose[3][1]/1000.0], \
+                                     [placementpose[0][2],placementpose[1][2],placementpose[2][2],placementpose[3][2]/1000.0], \
+                                     [placementpose[0][3],placementpose[1][3],placementpose[2][3],placementpose[3][3]]]))
         return results
-
 
     def showPlacementSequence(self, sequence, base):
         distancebetweencell = 300
@@ -198,6 +231,18 @@ class RegripPlanner():
         #     self.handtmp.setJawwidth(hndjawwidth)
 
     def findCommandGrasp(self, placement_1_id, placement_2_id):
+
+        # need to check whether two placement id belonging to the target object
+
+        sql = "SELECT freetabletopplacement.idobject FROM freetabletopplacement WHERE freetabletopplacement.idfreetabletopplacement=%d" % placement_1_id
+        result = self.gdb.execute(sql)
+        if len(result) == 0 or int(result[0][0]) != self.objectid:
+            raise "placement 1 id does not belong to the target object"
+
+        sql = "SELECT freetabletopplacement.idobject FROM freetabletopplacement WHERE freetabletopplacement.idfreetabletopplacement=%d" % placement_2_id
+        result = self.gdb.execute(sql)
+        if len(result) == 0 or int(result[0][0]) != self.objectid:
+            raise "placement 2 id does not belong to the target object"
 
         commonids = []
         sql =  "SELECT freeairgrip.idfreeairgrip FROM freeairgrip WHERE \
@@ -304,39 +349,40 @@ class RegripPlanner():
                 
 
 if __name__=='__main__':
+    pass
 
-    base = pandactrl.World(camp=[700,300,1400], lookatp=[0,0,0])
-    gdb = db.GraspDB()
-    this_dir, this_filename = os.path.split(__file__)
-    objpath = os.path.join(os.path.split(this_dir)[0], "objects", "cuboid.stl")
+    # base = pandactrl.World(camp=[700,300,1400], lookatp=[0,0,0])
+    # gdb = db.GraspDB()
+    # this_dir, this_filename = os.path.split(__file__)
+    # objpath = os.path.join(os.path.split(this_dir)[0], "objects", "cuboid.stl")
 
-    handpkg = fetch_grippernm
-    planner = RegripPlanner(objpath, handpkg, gdb)
-    planner.generateGraph()
+    # handpkg = fetch_grippernm
+    # planner = RegripPlanner(objpath, handpkg, gdb)
+    # planner.generateGraph()
 
-    goalpose = Mat4(1.0,0.0,0.0,0.0,0.0,0.0,-1.0,0.0,0.0,1.0,0.0,0.0,53.3199386597,-8.46575927734,-4.76837158203e-07,1.0)
-    goalhandwidth = 38.999997139
-    planner.addGoalGrasp(goalhandwidth, goalpose)
+    # goalpose = Mat4(1.0,0.0,0.0,0.0,0.0,0.0,-1.0,0.0,0.0,1.0,0.0,0.0,53.3199386597,-8.46575927734,-4.76837158203e-07,1.0)
+    # goalhandwidth = 38.999997139
+    # planner.addGoalGrasp(goalhandwidth, goalpose)
 
-    startpose = Mat4( -0.999999940395,-1.22464685259e-16,5.35310124002e-24,0.0,0.0,-4.37113882867e-08,-1.0,0.0,1.22464672024e-16,-1.0,4.37113882867e-08,0.0,-51.3811569214,-0.922590315342,-4.76837158203e-07,1.0)
-    starthandwidth = 38.999997139
-    planner.addStartGrasp(starthandwidth, startpose)
+    # startpose = Mat4( -0.999999940395,-1.22464685259e-16,5.35310124002e-24,0.0,0.0,-4.37113882867e-08,-1.0,0.0,1.22464672024e-16,-1.0,4.37113882867e-08,0.0,-51.3811569214,-0.922590315342,-4.76837158203e-07,1.0)
+    # starthandwidth = 38.999997139
+    # planner.addStartGrasp(starthandwidth, startpose)
 
-    placementsequence = planner.searchPath()
-    print "placement sequence ", placementsequence
+    # placementsequence = planner.searchPath()
+    # print "placement sequence ", placementsequence
 
-    planner.showPlacementSequence(placementsequence[0], base)
+    # planner.showPlacementSequence(placementsequence[0], base)
 
-    # planner.findCommandGrasp(placementsequence[0][0], placementsequence[0][1])
-    commongraspids = planner.findCommandGrasp(4, 5)
-    currentgrasppose = planner.getGrasps(4, commongraspids)
-    print "current grasp poses"
-    print currentgrasppose
+    # # planner.findCommandGrasp(placementsequence[0][0], placementsequence[0][1])
+    # commongraspids = planner.findCommandGrasp(4, 5)
+    # currentgrasppose = planner.getGrasps(4, commongraspids)
+    # print "current grasp poses"
+    # print currentgrasppose
 
-    # show the regrasp graph
-    # nx.draw(planner.regg, with_labels=True)
-    # plt.draw()
-    # plt.show()
+    # # show the regrasp graph
+    # # nx.draw(planner.regg, with_labels=True)
+    # # plt.draw()
+    # # plt.show()
 
 
-    base.run()
+    # base.run()
