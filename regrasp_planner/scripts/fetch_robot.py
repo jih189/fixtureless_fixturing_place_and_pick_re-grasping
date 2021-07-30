@@ -155,40 +155,25 @@ class Fetch_Robot():
         else:
             return None
 
-    def openGripper(self,pos = None):
-        if pos == None:
-            pos = self.open_joints
-
+    def setGripperWidth(self, pos):
         if self._sim == True:
             goal = FollowJointTrajectoryGoal()
             goal.trajectory.joint_names = self.joint_names
             point = JointTrajectoryPoint()
-            point.positions = pos
+            point.positions = pos - 0.04
             point.time_from_start = rospy.Duration(1)
             goal.trajectory.points.append(point)
             self.gripper_client.send_goal_and_wait(goal)
         else:
             goal = GripperCommandGoal()
-            goal.command.position = float(pos)
+            goal.command.position = float(pos/2.0)
             self.gripper_client.send_goal_and_wait(goal)
+
+    def openGripper(self):
+        self.setGripperWidth(0.08)
     
-    def closeGripper(self,pos=None):
-        if pos == None:
-            pos = self.close_joints 
-        
-        if self._sim == True:
-            goal = FollowJointTrajectoryGoal()
-            goal.trajectory.joint_names = self.joint_names
-            point = JointTrajectoryPoint()
-            point.positions = pos
-            point.time_from_start = rospy.Duration(1)
-            goal.trajectory.points.append(point)
-            self.gripper_client.send_goal_and_wait(goal)
-        else:
-            goal = GripperCommandGoal()
-            goal.command.position = float(pos)
-            self.gripper_client.send_goal_and_wait(goal)
-
+    def closeGripper(self):
+        self.setGripperWidth(0.0)
 
     def setErrorThreshold(self, transThreshold, rotThreshold):
         self.transThreshold = transThreshold
