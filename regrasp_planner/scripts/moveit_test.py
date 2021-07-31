@@ -43,8 +43,8 @@ from fetch_robot import Fetch_Robot
 import tf
 from scipy.spatial.transform import Rotation as R
 
-from  tf_util import TF_Helper,Panda_Helper, transformProduct, getMatrixFromQuaternionAndTrans, findCloseTransform, getTransformFromPoseMat
-
+#from  tf_util import TF_Helper, transformProduct, getMatrixFromQuaternionAndTrans, findCloseTransform, getTransformFromPoseMat
+from  tf_util import *
 trackstamp = 0
 
 def showPlacePos(rotation, trans):
@@ -106,13 +106,28 @@ def trackstamp_callback(input):
 
 def find_grasping_point(planner,tran_base_object ):
    print(len(planner.freegriprotmats))
-   for i in range(0,len(planner.freegriprotmats)):
-      obj_grasp_pos = planner.freegriprotmats[i] #Gives transforom matrix of grasp based on objrct ref  
-      #planner.showHand( planner.freegripjawwidth[i], obj_grasp_pos, base)
+
+   t,r = tran_base_object
+   tran_base_object_pos = tf.TransformerROS().fromTranslationRotation(t,r)
+   best_placement_id = planner.getPlacementIdFromPose(tran_base_object_pos)
+   gripper_id_list = planner.getGraspIdsByPlacementId(best_placement_id)
+   gripper_pos_list = planner.getGraspsById(gripper_id_list)
+
+   print(len(gripper_pos_list))
+   print(gripper_pos_list)
+
+   for i, (obj_grasp_pos, jaw_width) in enumerate(gripper_pos_list):
+
+      #Gives transforom matrix of grasp based on objrct ref 
+      obj_grasp_pos_panda = PosMat_t_PandaPosMax(RotateGripper(obj_grasp_pos)) 
+      
+      planner.showHand( jaw_width, obj_grasp_pos_panda, base)
 
       #change obj_pos from panda config to normal. Change pos rep to Quatorian. 
-      obj_grasp_pos =  pd_helper.PandaPosMax_t_PosMat(obj_grasp_pos) 
-      obj_grasp_pos = pd_helper.RotateGripper(obj_grasp_pos)
+      #obj_grasp_pos = PandaPosMax_t_PosMat(obj_grasp_pos) 
+      #obj_grasp_pos = RotateGripper(obj_grasp_pos)
+
+    
       obj_grasp_pos_Q = getTransformFromPoseMat(obj_grasp_pos) #Tranfrom gripper posmatx to (trans,rot)
     
 
@@ -126,6 +141,7 @@ def find_grasping_point(planner,tran_base_object ):
       print("About to do ik solver")
       grasp_ik_result = robot.solve_ik_collision_free(t_g_p_q, 10)
       print("Done with Ik solver")
+      continue
       if grasp_ik_result == None:
          print(i)
          continue
@@ -138,7 +154,6 @@ if __name__=='__main__':
    rospy.init_node('main_node')
 
    tf_helper = TF_Helper()
-   pd_helper = Panda_Helper()
 
    ## move the end-effector into robot's camera view
    robot = Fetch_Robot()
@@ -168,9 +183,9 @@ if __name__=='__main__':
    #We are just graping a random graps pos 
    #TODO filter out based on place ment so we know which is the actuall grasp
    world_grasp_pos = find_grasping_point(planner, tran_base_object)
-
-   plan = robot.planto_pose(world_grasp_pos)
-   robot.execute_plan(plan)
+   
+   # plan = robot.planto_pose(world_grasp_pos)
+   # robot.execute_plan(plan)
    #tf.TransformerROS().fromTranslationRotation(trans, rot) 
 
    planner.plotObject(base)

@@ -161,7 +161,7 @@ class Fetch_Robot():
             goal = FollowJointTrajectoryGoal()
             goal.trajectory.joint_names = self.joint_names
             point = JointTrajectoryPoint()
-            point.positions = pos - 0.04
+            point.positions = [pos - 0.04]
             point.time_from_start = rospy.Duration(1)
             goal.trajectory.points.append(point)
             self.gripper_client.send_goal_and_wait(goal)
@@ -171,7 +171,7 @@ class Fetch_Robot():
             self.gripper_client.send_goal_and_wait(goal)
 
     def openGripper(self):
-        self.setGripperWidth(0.08)
+        self.setGripperWidth(.5)
     
     def closeGripper(self):
         self.setGripperWidth(0.0)

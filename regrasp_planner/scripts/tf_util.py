@@ -3,6 +3,7 @@ import rospy
 import tf
 import numpy as np
 import math
+from panda3d.core import Mat4
 from scipy.spatial.transform import Rotation as R
 
 def getErrorBetweenTransforms(p1, p2):
@@ -73,6 +74,15 @@ def PandaPosMax_t_PosMat(panda_posmtx):
     posmtx[3][2] = posmtx[3][2] / 1000
     
     return np.transpose(posmtx)
+
+def PosMat_t_PandaPosMax(posmtx):
+    pose = Mat4( posmtx[0][0],posmtx[1][0],posmtx[2][0],0.0, \
+                    posmtx[0][1],posmtx[1][1],posmtx[2][1],0.0, \
+                    posmtx[0][2],posmtx[1][2],posmtx[2][2],0.0, \
+                    posmtx[0][3] * 1000,posmtx[1][3] * 1000,posmtx[2][3] * 1000,1.0)
+
+    return pose
+  
 
 def RotateGripper(posmtx):
     """ The gripper pose given from panda has is orientated different from the real robot. 

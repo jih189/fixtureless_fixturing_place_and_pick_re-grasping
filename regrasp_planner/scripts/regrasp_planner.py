@@ -3,6 +3,8 @@
 import os
 import itertools
 
+from numpy.core.numeric import cross
+
 import MySQLdb as mdb
 import numpy as np
 from panda3d.bullet import BulletWorld
@@ -22,6 +24,7 @@ from matplotlib import collections as mc
 from database import dbaccess as db
 
 import networkx as nx
+from  tf_util import PandaPosMax_t_PosMat
 
 class RegripPlanner():
     def __init__(self, objpath, handpkg, gdb, offset=0.0):
@@ -164,12 +167,34 @@ class RegripPlanner():
             if len(result) == 0:
                 continue
             grasppose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * dc.strToMat4(result[0][0])
-            jawwidth = float(result[0][1])
+            jawwidth = float(result[0][1]) / 1000
             # need to convert it back to normal metrics
             results.append((np.array([[grasppose[0][0],grasppose[1][0],grasppose[2][0],grasppose[3][0]/1000.0], \
                                      [grasppose[0][1],grasppose[1][1],grasppose[2][1],grasppose[3][1]/1000.0], \
                                      [grasppose[0][2],grasppose[1][2],grasppose[2][2],grasppose[3][2]/1000.0], \
                                      [grasppose[0][3],grasppose[1][3],grasppose[2][3],grasppose[3][3]]]), jawwidth))
+        return results
+
+    # given the placement id, this function will return all grasp id related to it
+    def getGraspIdsByPlacementId(self, placementid):
+        results = []
+        sql =  "SELECT freetabletopgrip.idfreeairgrip FROM freetabletopgrip WHERE freetabletopgrip.idfreetabletopplacement=%d \
+                    " % placementid
+        result = self.gdb.execute(sql)
+
+        for i in range(len(result)):
+            results.append(int(result[i][0]))
+        return results
+
+    # given the grasp id, this function will return all placement id related to it
+    def getPlacementIdsByGraspId(self, graspid):
+        results = []
+        sql =  "SELECT freetabletopgrip.idfreetabletopplacement FROM freetabletopgrip WHERE freetabletopgrip.idfreeairgrip=%d \
+                    " % graspid
+        result = self.gdb.execute(sql)
+
+        for i in range(len(result)):
+            results.append(int(result[i][0]))
         return results
 
     # this function will return all placement poses in normal format
@@ -181,6 +206,30 @@ class RegripPlanner():
                                      [placementpose[0][2],placementpose[1][2],placementpose[2][2],placementpose[3][2]/1000.0], \
                                      [placementpose[0][3],placementpose[1][3],placementpose[2][3],placementpose[3][3]]]))
         return results
+
+    # get the ground direction vector from pose in object frame
+    def getGroundDirection(self, pose):
+        gnd_dir = np.array([0,0,-1]) #groupd direction (i.e gravity vector )
+        pos_r = pose[:3,:3]
+        obj_grd_dir_pos = np.dot( np.transpose(pos_r), gnd_dir) # vecktro containing the dir of the object to the groud in the object frame
+        obj_grd_dir_pos= obj_grd_dir_pos/ np.linalg.norm(obj_grd_dir_pos)
+        return obj_grd_dir_pos
+
+    # given a pose, this function will return the placement id whose has most simlilar pose.
+    def getPlacementIdFromPose(self, pose):
+        obj_dir_pos_2match = self.getGroundDirection(pose)
+        diff = 2.0 
+        closest_placementid = None
+        for placementid, placementpose in zip(self.placementid, self.tpsmat4s):
+            placement_pose = PandaPosMax_t_PosMat(placementpose)
+            currnt_dir_pos = self.getGroundDirection(placement_pose)
+            
+            currnt_diff = np.linalg.norm(currnt_dir_pos - obj_dir_pos_2match)
+            if currnt_diff <= diff:
+                closest_placementid = placementid
+                diff = currnt_diff
+        return closest_placementid 
+
 
     # get placements in normal format with list of placement id
     def getPlacementsById(self, placementids):
@@ -229,6 +278,40 @@ class RegripPlanner():
         # else:
         #     self.handtmp.setMat(pandanpmat4=hndrotmat)
         #     self.handtmp.setJawwidth(hndjawwidth)
+
+    # def showAllPlacementAndAssociatedGrips(self, placementpose, graspposes, graspjawwidths, base):
+    #     """
+    #     show all placement and its associated grasps
+    #     :param base:
+    #     :return:
+    #     """
+    #     # todo!
+    #     objrotmat = placementpose
+
+    #     # show object
+    #     geom = pg.packpandageom(self.objtrimesh.vertices,
+    #                             self.objtrimesh.face_normals,
+    #                             self.objtrimesh.faces)
+    #     node = GeomNode('obj')
+    #     node.addGeom(geom)
+    #     star = NodePath('obj')
+    #     star.attachNewNode(node)
+    #     star.setTransparency(TransparencyAttrib.MAlpha)
+    #     star.setMat(objrotmat)
+    #     star.reparentTo(base.render)
+    #     # show the gripers
+    #     for j in range(len(self.tpsgriprotmats[i])):
+    #         hndrotmat = self.tpsgriprotmats[i][j]
+    #         hndrotmat.setCell(3,0,tx * distanceBetweenObjects + hndrotmat.getCell(3,0))
+    #         hndrotmat.setCell(3,1,ty * distanceBetweenObjects + hndrotmat.getCell(3,1))
+    #         hndjawwidth = self.tpsgripjawwidth[i][j]
+    #         # show grasps
+    #         tmphnd = self.handpkg.newHandNM(hndcolor=[0, 1, 0, .5])
+    #         tmphnd.setMat(pandanpmat4 = hndrotmat)
+    #         tmphnd.setJawwidth(hndjawwidth)
+    #         # tmphnd.setJawwidth(0)
+    #         # tmprtq85.setJawwidth(80)
+    #         tmphnd.reparentTo(base.render)
 
     def findCommandGrasp(self, placement_1_id, placement_2_id):
 

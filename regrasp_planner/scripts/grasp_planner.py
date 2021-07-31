@@ -28,16 +28,18 @@ from regrasp_planner import RegripPlanner
 
 def find_grasping_point(planner,tran_base_object):
     #TODO filter out based on place ment so we know which is the actuall grasp
+    t,r = tran_base_object
+    tran_base_object_pos = tf.TransformerROS().fromTranslationRotation(t,r)
+    matched_obj_placement_id = planner.getPlacementIdFromPose(tran_base_object_pos) #gets the most likly object placement given pose
+    gripper_id_list = planner.getGraspIdsByPlacementId(matched_obj_placement_id)
+    gripper_pos_list = planner.getGraspsById(gripper_id_list) # List of pos that that match placement
 
-    print("Going through this many grasp pose: " ,len(planner.freegriprotmats))
-    for i in range(0,len(planner.freegriprotmats)):
-        obj_grasp_pos = planner.freegriprotmats[i] #Gives transforom matrix of grasp based on objrct ref  
-        jaw_width = planner.freegripjawwidth[i] / 1000 #Give jaw_with in non_panda form
-        #planner.showHand( planner.freegripjawwidth[i], obj_grasp_pos, base)
 
-        #change obj_pos from panda config to normal. Change pos rep to Quatorian. 
-        obj_grasp_pos =  PandaPosMax_t_PosMat(obj_grasp_pos) 
-        obj_grasp_pos = RotateGripper(obj_grasp_pos)
+    print("Going through this many grasp pose: " ,len(gripper_pos_list))
+    for i, (obj_grasp_pos, jaw_width) in enumerate(gripper_pos_list):
+        #obj_grasp_pos_panda = PosMat_t_PandaPosMax(RotateGripper(obj_grasp_pos)) 
+        #planner.showHand( planner.freegripjawwidth[i]*1000, obj_grasp_pos_panda, base)
+        
         obj_grasp_pos_Q = getTransformFromPoseMat(obj_grasp_pos) #Tranfrom gripper posmatx to (trans,rot)
         obj_grasp_pos_Q =  transformProduct(obj_grasp_pos_Q, [[-0.06,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
 
@@ -77,7 +79,7 @@ def move_to_pickup(robot, planner, target_transform):
 
     raw_input("ready to grasp")
     robot.moveToFrame(torso_grasp_pos_Q)
-    
+    raw_input("ready to close grasp")
     robot.setGripperWidth(gripper_width)
 
     return True
@@ -126,7 +128,7 @@ if __name__=='__main__':
     table_quaternion = R.from_euler('zyx', [0,original_r[1], original_r[2]]).as_quat()
 
     # add table into the moveit
-    robot.addCollisionTable("table", tableresult.center.x, tableresult.center.y, tableresult.center.z, \
+    robot.addCollisionTable("table", tableresult.center.x, tableresult.center.y, tableresult.center.z + 0.01, \
             table_quaternion[0], table_quaternion[1], table_quaternion[2], table_quaternion[3], \
             tableresult.width, tableresult.depth, 0.001)
     table_base_transform = transformProduct([[0,0,-0.3],[0,0,0,1]], \
