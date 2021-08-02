@@ -22,6 +22,7 @@ from pandaplotutils import pandageom as pg
 import matplotlib.pyplot as plt
 from matplotlib import collections as mc
 from database import dbaccess as db
+import tf
 
 import networkx as nx
 from  tf_util import PandaPosMax_t_PosMat
@@ -230,7 +231,6 @@ class RegripPlanner():
                 diff = currnt_diff
         return closest_placementid 
 
-
     # get placements in normal format with list of placement id
     def getPlacementsById(self, placementids):
         results = []
@@ -247,6 +247,15 @@ class RegripPlanner():
                                      [placementpose[0][2],placementpose[1][2],placementpose[2][2],placementpose[3][2]/1000.0], \
                                      [placementpose[0][3],placementpose[1][3],placementpose[2][3],placementpose[3][3]]]))
         return results
+
+    # given object pose, this function use find the most similar placement according to the rotation
+    # part of the matrix, then return all grasps related to this pose.
+    def getGraspsbyPlacementPose(self, placementTransform):
+        t,r = placementTransform
+        tran_base_object_pos = tf.TransformerROS().fromTranslationRotation(t,r)
+        matched_obj_placement_id = self.getPlacementIdFromPose(tran_base_object_pos) #gets the most likly object placement given pose
+        gripper_id_list = self.getGraspIdsByPlacementId(matched_obj_placement_id)
+        return self.getGraspsById(gripper_id_list) # List of pos that that match placement
 
     def showPlacementSequence(self, sequence, base):
         distancebetweencell = 300

@@ -25,40 +25,30 @@ from manipulation.grip.fetch_gripper import fetch_grippernm
 from regrasp_planner import RegripPlanner
 
 
-
+# this function will return both pre grasp pose and grasp pose in base link frame
 def find_grasping_point(planner,tran_base_object):
-    #TODO filter out based on place ment so we know which is the actuall grasp
-    t,r = tran_base_object
-    tran_base_object_pos = tf.TransformerROS().fromTranslationRotation(t,r)
-    matched_obj_placement_id = planner.getPlacementIdFromPose(tran_base_object_pos) #gets the most likly object placement given pose
-    gripper_id_list = planner.getGraspIdsByPlacementId(matched_obj_placement_id)
-    gripper_pos_list = planner.getGraspsById(gripper_id_list) # List of pos that that match placement
-
+    # filter out based on placement so we know which is the actuall grasp
+    gripper_pos_list = planner.getGraspsbyPlacementPose(tran_base_object)
 
     print("Going through this many grasp pose: " ,len(gripper_pos_list))
     for i, (obj_grasp_pos, jaw_width) in enumerate(gripper_pos_list):
-        #obj_grasp_pos_panda = PosMat_t_PandaPosMax(RotateGripper(obj_grasp_pos)) 
-        #planner.showHand( planner.freegripjawwidth[i]*1000, obj_grasp_pos_panda, base)
         
-        obj_grasp_pos_Q = getTransformFromPoseMat(obj_grasp_pos) #Tranfrom gripper posmatx to (trans,rot)
-        obj_grasp_pos_Q =  transformProduct(obj_grasp_pos_Q, [[-0.06,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
+        obj_grasp_trans = getTransformFromPoseMat(obj_grasp_pos) #Tranfrom gripper posmatx to (trans,rot)
+        obj_pre_grasp_trans =  transformProduct(obj_grasp_trans, [[-0.06,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
+        obj_pre_grasp_trans = transformProduct(tran_base_object, obj_pre_grasp_trans)
+        obj_grasp_trans = transformProduct(tran_base_object, obj_grasp_trans)
 
-        world_grasp_pos_Q = transformProduct(tran_base_object, obj_grasp_pos_Q)
-        t,r = world_grasp_pos_Q
-        world_grasp_pos = tf.TransformerROS().fromTranslationRotation(t,r)
+        # need to ensure both grasp and pre-grasp is valid for robot
+        grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_grasp_trans, 10)
+        pre_grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_pre_grasp_trans, 10)
 
-        base_link_in_torso_link = tf_helper.getPoseMat('/torso_lift_link', '/base_link')
-        torso_grasp_pos = base_link_in_torso_link.dot(world_grasp_pos)
-        t_g_p_q = getTransformFromPoseMat(torso_grasp_pos)
-        print("About to do ik solver")
-        grasp_ik_result = robot.solve_ik_collision_free(t_g_p_q, 10)
-        print("Done with Ik solver")
-        if grasp_ik_result == None:
-            print(i)
+        if grasp_ik_result == None or pre_grasp_ik_result == None:
+            print 'check on grasp ', i
             continue
         else:
-            world_grasp_pos_Q = transformProduct(tran_base_object, obj_grasp_pos_Q)
-            return world_grasp_pos_Q, t_g_p_q , jaw_width
+            return obj_pre_grasp_trans, pre_grasp_ik_result, obj_grasp_trans, jaw_width
+    # if not solution, then return None
+    return None, None, None, None
 
 
 def move_to_pickup(robot, planner, target_transform):
@@ -67,18 +57,23 @@ def move_to_pickup(robot, planner, target_transform):
     robot.openGripper()
 
     #Go through all grasp pos and find a valid pos. 
-    world_grasp_pos_pre, torso_grasp_pos_pre, gripper_width = find_grasping_point(planner, target_transform)
-    #world_grasp_pos_Q = transformProduct(world_grasp_pos_pre, [[0.6,0,0],[0,0,0,1]]) 
-    torso_grasp_pos_Q = transformProduct(torso_grasp_pos_pre, [[0.06,0,0],[0,0,0,1]])
+    obj_pre_grasp_trans, pre_grasp_ik_result, obj_grasp_trans, gripper_width = find_grasping_point(planner, target_transform)
+
+    if pre_grasp_ik_result == None: # can't find any solution then return false.
+        return False
         
     # move to pre grasp pose
-    plan = robot.planto_pose(world_grasp_pos_pre)
+    plan = robot.planto_pose(obj_pre_grasp_trans)
     robot.display_trajectory(plan)
     raw_input("ready to pre-grasp")
     robot.execute_plan(plan)
 
+    # move to grasp pose
     raw_input("ready to grasp")
-    robot.moveToFrame(torso_grasp_pos_Q)
+    robot.moveToFrame(obj_grasp_trans, True)
+    
+    # close the gripper with proper width
+    print "grasp width = ", gripper_width
     raw_input("ready to close grasp")
     robot.setGripperWidth(gripper_width)
 
@@ -128,7 +123,7 @@ if __name__=='__main__':
     table_quaternion = R.from_euler('zyx', [0,original_r[1], original_r[2]]).as_quat()
 
     # add table into the moveit
-    robot.addCollisionTable("table", tableresult.center.x, tableresult.center.y, tableresult.center.z + 0.01, \
+    robot.addCollisionTable("table", tableresult.center.x, tableresult.center.y, tableresult.center.z + 0.04, \
             table_quaternion[0], table_quaternion[1], table_quaternion[2], table_quaternion[3], \
             tableresult.width, tableresult.depth, 0.001)
     table_base_transform = transformProduct([[0,0,-0.3],[0,0,0,1]], \
@@ -141,6 +136,8 @@ if __name__=='__main__':
     print "--- search for the object ---"
     ## launch the tracker
     objectSearcherTrigger(True, 1, Pose())
+
+    raw_input("object detection")
 
     try:
         # add the object to the moveit

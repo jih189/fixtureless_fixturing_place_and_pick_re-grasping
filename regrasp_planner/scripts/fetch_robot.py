@@ -11,6 +11,7 @@ from controller_manager_msgs.srv import SwitchController, ListControllers
 import threading
 from rospy.core import is_shutdown
 import tf
+from tf_util import transformProduct
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import math
@@ -80,6 +81,7 @@ class Fetch_Robot():
 
         ############ parameters for cartisian motion controller #######################
         self.armbasename = 'torso_lift_link'
+        self.basename = 'base_link'
         self.targetFrame = PoseStamped()
         self.targetFrame.header.frame_id = self.armbasename
         self.thread = None
@@ -102,9 +104,16 @@ class Fetch_Robot():
             result.append(random.uniform(-3.14, 3.14))
         return result
 
-    def solve_ik_collision_free(self, pose, numOfAttempt):
+    def solve_ik_sollision_free_in_base(self, transform, numOfAttempt):
+        # find the transform from arm base to the base link
+        self.tf_listener.waitForTransform(self.armbasename, self.basename, rospy.Time(), rospy.Duration(4.0))
+        base_link_in_torso_link_transform = self.tf_listener.lookupTransform(self.armbasename, self.basename, rospy.Time())
+
+        return self.solve_ik_collision_free(transformProduct(base_link_in_torso_link_transform, transform), numOfAttempt)
+
+    def solve_ik_collision_free(self, transform, numOfAttempt):
         robot_joint_state = moveit_msgs.msg.DisplayRobotState()
-        trans, rot = pose
+        trans, rot = transform
 
         for _ in range(numOfAttempt):
             seed_state = self.generate_seed_state(self.ik_solver.number_of_joints)
@@ -132,9 +141,9 @@ class Fetch_Robot():
         res = self.state_valid_service(req)
         return res.valid
 
-    def solve_ik(self, pose):
+    def solve_ik(self, transform):
         robot_joint_state = moveit_msgs.msg.DisplayRobotState()
-        trans, rot = pose
+        trans, rot = transform
         seed_state = [0.0] * self.ik_solver.number_of_joints
         
         joint_values = self.ik_solver.get_ik(seed_state, trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3])
@@ -167,7 +176,7 @@ class Fetch_Robot():
             self.gripper_client.send_goal_and_wait(goal)
         else:
             goal = GripperCommandGoal()
-            goal.command.position = float(pos/2.0)
+            goal.command.position = float(pos)
             self.gripper_client.send_goal_and_wait(goal)
 
     def openGripper(self):
@@ -233,7 +242,12 @@ class Fetch_Robot():
         return trans, angle
 
     # this function is used by cartisian motion controller
-    def moveToFrame(self, transform):
+    def moveToFrame(self, transform, isInBaselink=True):
+        if isInBaselink: # if is move in base link, then need to convert it to arm base first
+            self.tf_listener.waitForTransform(self.armbasename, self.basename, rospy.Time(), rospy.Duration(4.0))
+            base_link_in_torso_link_transform = self.tf_listener.lookupTransform(self.armbasename, self.basename, rospy.Time())
+            transform = transformProduct(base_link_in_torso_link_transform, transform)
+
         targetposition, targetorientation = transform 
         self.setTargetFrame(targetposition, targetorientation)
 
@@ -249,7 +263,6 @@ class Fetch_Robot():
             self.thread.join()
             self.thread = threading.Thread(target=self.publishTargetFrame, args=())
             self.thread.start()
-            
         
         return False
 

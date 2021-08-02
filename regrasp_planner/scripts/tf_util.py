@@ -6,6 +6,13 @@ import math
 from panda3d.core import Mat4
 from scipy.spatial.transform import Rotation as R
 
+def isRotationMatrix(M):
+    # check if the matrix is rotation matrix or not
+    tag = False
+    I = np.identity(M.shape[0])
+    if np.all((np.matmul(M, M.T)) == I) and (np.linalg.det(M)==1): tag = True
+    return tag 
+
 def getErrorBetweenTransforms(p1, p2):
     trans1, rot1 = p1
     rot1_mat = tf.transformations.quaternion_matrix(rot1)[:3,:3]
@@ -66,35 +73,35 @@ def getTransformFromPoseMat(pose_mat):
 
 def PandaPosMax_t_PosMat(panda_posmtx):
     """The panda pose matrix needs to be scaled and transposed to be a normal pose matrix form."""
-    I =  np.identity(4) #TODO: make it for any size matix. 
-    posmtx = I.dot(panda_posmtx) #matrix of panda in np form.  
-    
-    posmtx[3][0] = posmtx[3][0] / 1000
-    posmtx[3][1] = posmtx[3][1] / 1000
-    posmtx[3][2] = posmtx[3][2] / 1000
-    
-    return np.transpose(posmtx)
+
+    mat = np.array([[panda_posmtx[0][0],panda_posmtx[1][0],panda_posmtx[2][0],panda_posmtx[3][0]/1000.0], \
+                     [panda_posmtx[0][1],panda_posmtx[1][1],panda_posmtx[2][1],panda_posmtx[3][1]/1000.0], \
+                     [panda_posmtx[0][2],panda_posmtx[1][2],panda_posmtx[2][2],panda_posmtx[3][2]/1000.0], \
+                     [0.0,0.0,0.0,1.0]])
+
+    # if not isRotationMatrix(mat[:3,:3]):
+    #     raise Exception("The rotation part is not a rotation matrix!!")
+
+    return mat
 
 def PosMat_t_PandaPosMax(posmtx):
+    # if not isRotationMatrix(posmtx[:3,:3]):
+    #     raise Exception("The rotation part is not a rotation matrix!!")
+    # convert pose mat to panda pose mat
     pose = Mat4( posmtx[0][0],posmtx[1][0],posmtx[2][0],0.0, \
-                    posmtx[0][1],posmtx[1][1],posmtx[2][1],0.0, \
-                    posmtx[0][2],posmtx[1][2],posmtx[2][2],0.0, \
-                    posmtx[0][3] * 1000,posmtx[1][3] * 1000,posmtx[2][3] * 1000,1.0)
+                 posmtx[0][1],posmtx[1][1],posmtx[2][1],0.0, \
+                 posmtx[0][2],posmtx[1][2],posmtx[2][2],0.0, \
+                 posmtx[0][3] * 1000.0,posmtx[1][3] * 1000.0,posmtx[2][3] * 1000.0,1.0)
 
     return pose
   
 
 def RotateGripper(posmtx):
     """ The gripper pose given from panda has is orientated different from the real robot. 
-    This funciton Rotates the gipper pose given, about the Z or Y axis to correct it.
+    This funciton Rotates the gipper pose given, about the Y axis to correct it.
     """
     
     rotate = np.identity(4)
-    #Rotate about z 
-    # rotate[0][0] = -1 
-    # rotate[0][1] = 0 
-    # rotate[1][0] = 0 
-    # rotate[1][1] = -1
     #Rotate about Y
     rotate[0][0] = -1 
     rotate[0][2] = 0 
@@ -104,6 +111,7 @@ def RotateGripper(posmtx):
     return posmtx
 
 class TF_Helper():
+    # this class is used to create both listener and broadcaster for the tf.
     def __init__(self):
         self.listener = tf.TransformListener()
         self.br = tf.TransformBroadcaster()
