@@ -40,13 +40,18 @@ def find_grasping_point(planner,tran_base_object):
 
         # need to ensure both grasp and pre-grasp is valid for robot
         grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_grasp_trans, 10)
-        pre_grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_pre_grasp_trans, 10)
 
-        if grasp_ik_result == None or pre_grasp_ik_result == None:
+        if grasp_ik_result == None:
             print 'check on grasp ', i
             continue
-        else:
-            return obj_pre_grasp_trans, pre_grasp_ik_result, obj_grasp_trans, jaw_width
+
+        pre_grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_pre_grasp_trans, 10)
+
+        if pre_grasp_ik_result == None:
+            print 'check on grasp ', i
+            continue
+        
+        return obj_pre_grasp_trans, pre_grasp_ik_result, obj_grasp_trans, jaw_width
     # if not solution, then return None
     return None, None, None, None
 
