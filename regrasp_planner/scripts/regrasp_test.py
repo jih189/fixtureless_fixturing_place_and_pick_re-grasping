@@ -1,5 +1,8 @@
+from posix import GRND_NONBLOCK
 import networkx as nx
 import numpy as np
+from scipy.spatial.transform import Rotation as R
+from scipy.special import softmax
 
 class dexterousManipulationGraph:
     def __init__(self, angle_range, edges):
@@ -30,8 +33,35 @@ class dexterousManipulationGraph:
         self.Graph = G
 
     def get_closest_angle_range(self, grasp):
-        for i in self.nodes:
-            pass 
+        "Given the a grasp, this function will return the closeset angel range to that grasp"
+        tran_diff = []
+        rot_diff = []
+        ang_range_cnt = []
+        grasp_inv_rot = np.transpose(grasp[:3,:3])
+        grasp_trans = grasp[:,3:]
+
+        for i , angel_range in enumerate(self.nodes):
+            for pos in angel_range:
+                pos_rot = pos[:3,:3]
+                pos_tran = pos[:,3:]
+
+                rot = R.from_dcm(np.dot(grasp_inv_rot,pos_rot))
+                crnt_rot_diff = np.linalg.norm(rot.as_rotvec())
+
+                crnt_tran_diff = np.linalg.norm(pos_tran - grasp_trans)
+                tran_diff.append(crnt_tran_diff)
+                rot_diff.append(crnt_rot_diff)
+                ang_range_cnt.append(i)    # keep track of which angle range set to trans&rot diff            
+        
+        #Normilize and add trans and rot diff together
+        tran_diff = softmax(tran_diff)
+        rot_diff = softmax(rot_diff)
+        tran_N_rot_dif = [ x[0]+x[1]  for x in zip(tran_diff, rot_diff) ]
+
+        closet_ang_range_idx = ang_range_cnt[np.argmin(tran_N_rot_dif)] #find the min diff, return angle_range idx
+        return self.nodes[closet_ang_range_idx], closet_ang_range_idx
+
+             
 
     def isConnected(self, grasp, angle_range):
         #Checks if the grasp can connect to any in angle_range
@@ -39,22 +69,32 @@ class dexterousManipulationGraph:
         pass
 
     def insert_grasp_2_DMG(self,grasp):
-        closest_angel_range = get_closest_angle_range(grasp)
+        closest_angel_range, clst_ang_rang_idx = self.get_closest_angle_range(grasp)
 
         if isConnected(grasp,closest_angel_range):
-            self.nodes.append([grasp])
-            Graph.add_node(len(self.nodes) - 1)
-            Graph.add_edge()
-        pass
+            self.nodes.append(grasp)
+            grasp_idx = len(self.nodes)
+            Graph.add_node(grasp_idx)
+            Graph.add_edge(clst_ang_rang_idx,grasp_idx)
 
         "Checks if grasp points have a possible path"
     def is_trajectory_possible(self, start_grasp,end_grasp):
         
+        all_pos = [item for sublist in self.nodes for item in sublist]
+        for pos in all_pos:
+            if (start_grasp == pos).all():
+                
         if start_grasp not in self.nodes:
             self.insert_grasp_2_DMG(start_grasp)
-        
+            grasp_idx = len(self.nodes)
+        else 
+             
+        closest_angle_range, clost_angle_range_idx = self.insert_grasp_2_DMG(start_grasp)
+        grasp_idx = len(self.nodes)
+
         nx.path.bidirectional_dijkstra(self.Graph,,)
         Graph.(...)
+        del all_pos
         pass
 
     def getGraspTrajectory(self, start_grasp, end_grasp):
