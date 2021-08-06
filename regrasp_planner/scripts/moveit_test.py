@@ -173,7 +173,9 @@ if __name__=='__main__':
    gdb = db.GraspDB()   #SQL grasping database interface
    planner = RegripPlanner(objpath, handpkg, gdb)
 
-
+   a, b ,c = planner.__loadFreeTablePlacement()
+   print(a[0], b[0], c[0])
+   exit()
    #Add object as collision for moveit. 
    tran_base_object = tf_helper.getTransform('/base_link', '/poing') #return tuple (trans,rot) of parent_lin to child_link
    robot.addCollisionObject("poing_collsion", tran_base_object, objpath, .001) 

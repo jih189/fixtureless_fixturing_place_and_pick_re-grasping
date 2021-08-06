@@ -7,19 +7,22 @@ from scipy.special import softmax
 class dexterousManipulationGraph:
     def __init__(self, angle_range, edges):
         # this function will read a set of possible angles and edges to build the dexterous manipulation graph
-        self.nodes = None
+        self.nodes = None # [ [g0,g5], [g1,g2],[g3,g4,gx...], ....]
+        self.ang_range_node_idx = []  #[ 0,0, 1,1 2,2,...]
         self.Graph = None
         _convert_to_networkX(angle_range,edges) #Sets nodes and creates a graph with edges using nodes
         
     def _convert_to_networkX(self, angle_range, edges):
-        
         G = nx.Graph()
 
         simp_angle_range = [item for sublist in angle_range[0] for item in sublist]
         self.nodes = simp_angle_range
-        for i in range(0,len(simp_angle_range)): G.add_node(i)
 
-        #simp_angle_edge = [] 
+        for i , angel_range in enumerate(self.nodes):
+            G.add_node(i)
+            for _ in angel_range:                    
+                self.ang_range_node_cnt.append(i)
+        
         helper_sae = [0]
         for i in range(1,len(angle_range)):
             helper_sae.append(len(angle_range[i-1]))
@@ -36,11 +39,10 @@ class dexterousManipulationGraph:
         "Given the a grasp, this function will return the closeset angel range to that grasp"
         tran_diff = []
         rot_diff = []
-        ang_range_cnt = []
         grasp_inv_rot = np.transpose(grasp[:3,:3])
         grasp_trans = grasp[:,3:]
 
-        for i , angel_range in enumerate(self.nodes):
+        for angel_range in self.nodes:
             for pos in angel_range:
                 pos_rot = pos[:3,:3]
                 pos_tran = pos[:,3:]
@@ -51,14 +53,14 @@ class dexterousManipulationGraph:
                 crnt_tran_diff = np.linalg.norm(pos_tran - grasp_trans)
                 tran_diff.append(crnt_tran_diff)
                 rot_diff.append(crnt_rot_diff)
-                ang_range_cnt.append(i)    # keep track of which angle range set to trans&rot diff            
+                            
         
         #Normilize and add trans and rot diff together
         tran_diff = softmax(tran_diff)
         rot_diff = softmax(rot_diff)
         tran_N_rot_dif = [ x[0]+x[1]  for x in zip(tran_diff, rot_diff) ]
 
-        closet_ang_range_idx = ang_range_cnt[np.argmin(tran_N_rot_dif)] #find the min diff, return angle_range idx
+        closet_ang_range_idx = self.ang_range_node_idx[np.argmin(tran_N_rot_dif)] #find the min diff, return angle_range idx
         return self.nodes[closet_ang_range_idx], closet_ang_range_idx
 
              
@@ -70,32 +72,46 @@ class dexterousManipulationGraph:
 
     def insert_grasp_2_DMG(self,grasp):
         closest_angel_range, clst_ang_rang_idx = self.get_closest_angle_range(grasp)
-
+        #Only checks the closet angel range for connection. 
         if isConnected(grasp,closest_angel_range):
-            self.nodes.append(grasp)
+            self.nodes.append([grasp])
             grasp_idx = len(self.nodes)
+            self.ang_range_node_idx.append(grasp_idx)
+
             Graph.add_node(grasp_idx)
             Graph.add_edge(clst_ang_rang_idx,grasp_idx)
+            return grasp_idx
+        else:
+            print("Grasp not inserted! Closest angel_range not connected")
 
         "Checks if grasp points have a possible path"
     def is_trajectory_possible(self, start_grasp,end_grasp):
         
         all_pos = [item for sublist in self.nodes for item in sublist]
-        for pos in all_pos:
+        st_pos_deteced = False
+        ed_pos_deteced = False
+        st_grasp_idx = None
+        ed_grasp_idx = None
+        #Check to see if start or end graps already belong in DMG. If so we return the node idx for that grasp
+        for i, pos in enumerate(all_pos):
             if (start_grasp == pos).all():
-                
-        if start_grasp not in self.nodes:
-            self.insert_grasp_2_DMG(start_grasp)
-            grasp_idx = len(self.nodes)
-        else 
-             
-        closest_angle_range, clost_angle_range_idx = self.insert_grasp_2_DMG(start_grasp)
-        grasp_idx = len(self.nodes)
-
-        nx.path.bidirectional_dijkstra(self.Graph,,)
-        Graph.(...)
+                st_pos_deteced = True
+                st_grasp_idx = self.ang_range_node_idx[i]
+            if (end_grasp == pos).all():  
+                ed_pos_deteced = True                  
+                ed_grasp_idx = self.ang_range_node_idx[i]
+            if st_pos_deteced & ed_pos_deteced:
+                break
+        
+        if not st_pos_deteced:
+            st_grasp_idx = self.insert_grasp_2_DMG(start_grasp)
+        if not ed_pos_deteced:
+            ed_grasp_idx = self.insert_grasp_2_DMG(end_grasp)
+        
         del all_pos
-        pass
+        return nx.path.bidirectional_dijkstra(self.Graph,st_grasp_idx,ed_grasp_idx)
+       
+
 
     def getGraspTrajectory(self, start_grasp, end_grasp):
         # this function will insert both start grasp and end grasp into the dexterous manipulation graph
