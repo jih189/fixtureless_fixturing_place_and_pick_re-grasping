@@ -28,7 +28,7 @@ from manipulation.grip.ffreplacement import FF_replacement_planner
 from manipulation.grip.ffregrasp import PandaPosMax_t_PosMat, ff_regrasp_planner
 
 
-def move_to_regrasp_placement( obj_path, init_grasp, handpkg,gdb):
+def move_to_regrasp_placement( obj_path, init_graspid, handpkg,gdb, tableresult):
 
     sql = "SELECT * FROM object WHERE object.name LIKE '%s'" % "cup"
     result = gdb.execute(sql)
@@ -48,9 +48,24 @@ def move_to_regrasp_placement( obj_path, init_grasp, handpkg,gdb):
     
     regrasp_planner = ff_regrasp_planner()
     replacement_planner = FF_replacement_planner(obj_path,handpkg,gdb)
-    for grasp in target_grasps:
-        replacement_planner.insert_ini_grasp_as_placement(init_grasp)
 
+    #TODO: An optimal path to the target grasp should always be 1 and will always exsist for our objects
+    # This is not true for other objects. 
+    for grasp in target_grasps:
+        replacement_planner.insert_init_graspID_as_placement(init_graspid)
+        replacement_planner.insert_end_graspPose_as_placement(grasp[0], grasp[1])
+        path = replacement_planner.find_shortest_grasp_path()
+        grasp_t = replacement_planner.get_placement_grasp_trajectory()
+
+        if len(path) == 1:
+            break 
+    
+    placement_id = path[0]
+    placement_stable = path[1] # 0 == stable; 1 == unstable
+
+
+    """"----- Placing the object on table according to placement_id"""
+            
 
 def find_grasping_point(planner,tran_base_object ):
     #TODO filter out based on place ment so we know which is the actuall grasp
@@ -82,7 +97,7 @@ def find_grasping_point(planner,tran_base_object ):
             continue
         else:
             world_grasp_pos_Q = transformProduct(tran_base_object, obj_grasp_pos_Q)
-            return world_grasp_pos_Q, t_g_p_q , jaw_width
+            return world_grasp_pos_Q, t_g_p_q , jaw_width, planner.freegripid[i]
 
 
 def move_to_pickup(robot):
@@ -102,10 +117,11 @@ def move_to_pickup(robot):
 
     tran_base_object = tf_helper.getTransform('/base_link', '/cup') #return tuple (trans,rot) of parent_lin to child_link
     #Go through all grasp pos and find a valid pos. 
-    world_grasp_pos_pre, torso_grasp_pos_pre, gripper_width = find_grasping_point(planner, tran_base_object)
+    world_grasp_pos_pre, torso_grasp_pos_pre, gripper_width, gripId = find_grasping_point(planner, tran_base_object)
     world_grasp_pos_Q = transformProduct(world_grasp_pos_pre, [[0.12,0,0],[0,0,0,1]]) 
     #torso_grasp_pos = transformProduct(torso_grasp_pos_pre, [[0.12,0,0],[0,0,0,1]])
-        
+
+    """-----Move to Grasp the object---"""  
     plan = robot.planto_pose(world_grasp_pos_pre)
     robot.display_trajectory(plan)
     raw_input("check")
@@ -114,28 +130,34 @@ def move_to_pickup(robot):
     raw_input("check")
     robot.moveToFrame(world_grasp_pos_Q)
     
+    """-----Set gripper width---""""  
     if robot._sim == True:
         gripper_width = gripper_width -0.04
     else:
         gripper_width = gripper_width/2
     robot.closeGripper(gripper_width)
 
-    " pick up the object"
-    
-    move_to_regrasp_placement(objpath, world_grasp_pos_Q, handpkg,gdb )
+    """-------Pick up object----"""
+    #TODO: Pick up the object 
+
+
+
+    # """ For simulation"""
     # robot.switchController('my_cartesian_motion_controller', 'arm_controller')
     # while not rospy.is_shutdown():
     #     if(robot.moveToFrame(torso_grasp_pos)):
     #         break
-    #     rospy.sleep(0.05)
+    #     rospy.sleep(0.)
     # robot.switchController('arm_controller', 'my_cartesian_motion_controller')
 
     # plan = robot.planto_pos(world_grasp_pos)
     # robot.display_trajectory(plan)
     #robot.execute_plan(plan)
 
-    planner.plotObject(base)
-    base.run()
+    # planner.plotObject(base)
+    # base.run()
+
+    return objpath, gripId, handpkg, gdb
 
 if __name__=='__main__':
     rospy.init_node('grasp_node')
@@ -182,4 +204,5 @@ if __name__=='__main__':
     objectSearcherTrigger(False, 0, Pose())
     print "Entering Pick up"
     print("Test print")
-    move_to_pickup(robot)
+    objpath, init_graspId, handpkg, gdb = move_to_pickup(robot)
+    move_to_regrasp_placement( objpath, init_graspId, handpkg,gdb, tableresult)
