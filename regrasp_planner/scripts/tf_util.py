@@ -116,9 +116,9 @@ class TF_Helper():
         self.listener = tf.TransformListener()
         self.br = tf.TransformBroadcaster()
 
-    def pubTransform(self, transform):
+    def pubTransform(self, name, transform):
         t, q = transform
-        self.br.sendTransform(t, q, rospy.Time.now(), 'test', 'base_link')
+        self.br.sendTransform(t, q, rospy.Time.now(), name, 'base_link')
 
     def getTransform(self, parent_link, child_link):
         self.listener.waitForTransform(parent_link, child_link, rospy.Time(), rospy.Duration(10.0))
