@@ -15,6 +15,7 @@ import tf
 
 import pandaplotutils.pandactrl as pandactrl
 from database import dbaccess as db
+from utils import dbcvt as dc
 
 from  tf_util import TF_Helper, Panda_Helper, transformProduct, getMatrixFromQuaternionAndTrans, findCloseTransform, getTransformFromPoseMat
 from moveit_msgs.msg import MoveItErrorCodes
@@ -23,7 +24,32 @@ import moveit_commander
 from scipy.spatial.transform import Rotation as R
 from manipulation.grip.fetch_gripper import fetch_grippernm
 from regrasp_planner import RegripPlanner
+from manipulation.grip.ffreplacement import FF_replacement_planner
+from manipulation.grip.ffregrasp import PandaPosMax_t_PosMat, ff_regrasp_planner
 
+
+def move_to_regrasp_placement( obj_path, init_grasp, handpkg,gdb):
+
+    sql = "SELECT * FROM object WHERE object.name LIKE '%s'" % "cup"
+    result = gdb.execute(sql)
+    if not result:
+        print "please add the object name to the table first!!"
+        raise Exception("the table does not contain the object!")
+    else:
+        objectId = int(result[0][0])
+
+    sql = "SELECT grasppose, jawwidth FROM targetgrasps WHERE idobject = '%d'" % objectId
+    targetgrasp_result = gdb.execute(sql)
+
+    # target grasps (grasp pose(in numpy format), jawwidth(in meter))
+    target_grasps = []
+    for grasppose, jawwidth in targetgrasp_result:
+        target_grasps.append((PandaPosMax_t_PosMat(dc.strToMat4(grasppose)), float(jawwidth) / 1000))
+    
+    regrasp_planner = ff_regrasp_planner()
+    replacement_planner = FF_replacement_planner(obj_path,handpkg,gdb)
+    for grasp in target_grasps:
+        replacement_planner.insert_ini_grasp_as_placement(init_grasp)
 
 
 def find_grasping_point(planner,tran_base_object ):
@@ -94,6 +120,9 @@ def move_to_pickup(robot):
         gripper_width = gripper_width/2
     robot.closeGripper(gripper_width)
 
+    " pick up the object"
+    
+    move_to_regrasp_placement(objpath, world_grasp_pos_Q, handpkg,gdb )
     # robot.switchController('my_cartesian_motion_controller', 'arm_controller')
     # while not rospy.is_shutdown():
     #     if(robot.moveToFrame(torso_grasp_pos)):

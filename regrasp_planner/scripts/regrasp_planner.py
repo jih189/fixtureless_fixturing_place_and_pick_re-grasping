@@ -210,7 +210,7 @@ class RegripPlanner():
 
     # get the ground direction vector from pose in object frame
     def getGroundDirection(self, pose):
-        gnd_dir = np.array([0,0,-1]) #groupd direction (i.e gravity vector )
+        gnd_dir = np.array([0,0,-1]) #ground direction (i.e gravity vector )
         pos_r = pose[:3,:3]
         obj_grd_dir_pos = np.dot( np.transpose(pos_r), gnd_dir) # vecktro containing the dir of the object to the groud in the object frame
         obj_grd_dir_pos= obj_grd_dir_pos/ np.linalg.norm(obj_grd_dir_pos)
