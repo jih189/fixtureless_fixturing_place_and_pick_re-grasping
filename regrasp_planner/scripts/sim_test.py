@@ -55,19 +55,47 @@ def detection_object(tf_helper, robot):
 
 # grasp_object will try to grasp the object
 # input: object pose
-# return: issuccess
+# return: issuccess, object_pose_in_hand
 def grasp_object(tf_helper, robot, object_pose):
 
   robot.openGripper()
 
-  return True
+  # search all possible grasp pose with given object_pose
+
+  # if find the grasp pose
+  #   move to the grasp pose
+  # else
+  # return False, None
+
+  object_pose_in_hand = None
+
+  robot.closeGripper()
+
+  return True, object_pose_in_hand
+
+# in hand pose estimation is currently optional. This function is used to estimate the object
+# pose in hand.
+# input: initialized estimated pose. If there is not initialize guess pose in hand then give None
+# output: issuccess, preditect object pose in hand
+def in_hand_pose_estimation(tf_helper, robot, guess_pose = None):
+
+  object_pose_in_hand = None
+  return True, object_pose_in_hand
+
+# regrasping will regrasp the object on the table
+# input: list of possible manipulating place on the table and current object pose in the hand
+# output: issuccess, final object pose in hand
+def regrasping(tf_helper, robot, manipulation_position_list = None, target_grasps = None, init_object_pose_in_hand = None):
+
+  current_object_pose_in_hand = None
+  return True, current_object_pose_in_hand
 
 if __name__=='__main__':
     rospy.init_node('test_node')
     robot = Fetch_Robot(sim=True)
     tf_helper = TF_Helper()
 
-    result, manipulation_pose_on_table = detect_table_and_placement(tf_helper, robot)
+    result, manipulation_poses_on_table = detect_table_and_placement(tf_helper, robot)
     print "table detection and placement analysis"
     if result:
       print "---SUCCESS---"
@@ -83,10 +111,32 @@ if __name__=='__main__':
       print "---FAILURE---"
       exit()
 
-    result = grasp_object(tf_helper, robot, object_pose_in_base_link)
+    result, init_object_pose_in_hand = grasp_object(tf_helper, robot, object_pose_in_base_link)
     print "grasp object"
     if result:
       print "---SUCCESS---"
     else:
       print "---FAILURE---"
       exit()
+
+    '''
+    result, object_pose_in_hand = in_hand_pose_estimation(tf_helper, robot, init_object_pose_in_hand)
+    print "in-hand object pose estimation"
+    if result:
+      print "---SUCCESS---"
+    else:
+      print "---FAILURE---"
+      exit()
+    '''
+
+    # extract the list of target grasps
+    target_grasps = None
+
+    result, object_pose_in_hand = regrasping(tf_helper, robot, manipulation_poses_on_table, target_grasps, init_object_pose_in_hand)
+    print "regrasping"
+    if result:
+      print "---SUCCESS---"
+    else:
+      print "---FAILURE---"
+      exit()
+

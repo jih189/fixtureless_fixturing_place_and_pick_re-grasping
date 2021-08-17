@@ -3,8 +3,6 @@
 import os
 import itertools
 
-from numpy.core.numeric import cross
-
 import MySQLdb as mdb
 import numpy as np
 from panda3d.bullet import BulletWorld
@@ -12,7 +10,6 @@ from panda3d.core import *
 
 from manipulation.grip.fetch_gripper import fetch_grippernm
 
-import pandaplotutils.pandactrl as pandactrl
 import pandaplotutils.pandageom as pandageom
 import trimesh
 from utils import collisiondetection as cd
@@ -27,6 +24,7 @@ import tf
 import networkx as nx
 from  tf_util import PandaPosMax_t_PosMat
 
+# this is planner to plan a sequence of placement and regrasping on table for in-hand regrasping.
 class RegripPlanner():
     def __init__(self, objpath, handpkg, gdb, offset=0.0):
         self.objtrimesh=trimesh.load_mesh(objpath)
