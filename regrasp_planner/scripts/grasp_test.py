@@ -27,7 +27,10 @@ from regrasp_planner import RegripPlanner
 from manipulation.grip.ffreplacement import FF_replacement_planner
 from manipulation.grip.ffregrasp import PandaPosMax_t_PosMat, ff_regrasp_planner
 
+# this is the main code to detect the object and grasp it, then regrasp it in the open space area
+# for further manipulation. Each function in this script can be considered as a action to run.
 
+# 
 def move_to_regrasp_placement( obj_path, init_graspid, handpkg,gdb, tableresult, planner):
 
     sql = "SELECT * FROM object WHERE object.name LIKE '%s'" % "cup"

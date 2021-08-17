@@ -22,8 +22,10 @@ import random
 import actionlib
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal, GripperCommandAction, GripperCommandGoal
 
-
+# Fetch_Robot class is a fetch robot interface for accessing moveit and planning scene, so user can use this to control the robot
+# in real world or simulation.
 class Fetch_Robot():
+    # when sim = True, then this class is used for simulation. If it is False, then it is used for real robot.
     def __init__(self, sim=True):
 
         self._sim = sim
