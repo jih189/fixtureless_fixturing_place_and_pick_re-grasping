@@ -28,7 +28,7 @@ from manipulation.grip.ffreplacement import FF_replacement_planner
 from manipulation.grip.ffregrasp import PandaPosMax_t_PosMat, ff_regrasp_planner
 
 
-def move_to_regrasp_placement( obj_path, init_graspid, handpkg,gdb, tableresult):
+def move_to_regrasp_placement( obj_path, init_graspid, handpkg,gdb, tableresult, planner):
 
     sql = "SELECT * FROM object WHERE object.name LIKE '%s'" % "cup"
     result = gdb.execute(sql)
@@ -62,10 +62,16 @@ def move_to_regrasp_placement( obj_path, init_graspid, handpkg,gdb, tableresult)
     
     placement_id = path[0]
     placement_stable = path[1] # 0 == stable; 1 == unstable
-
+    
+    if placement_stable == 0:
+        "pick and place"
+    else:
+        ""
 
     """"----- Placing the object on table according to placement_id"""
-            
+    # get the pose mat from base link to table
+    tableposMat = getMatrixFromQuaternionAndTrans(tableresult.orientation, tableresult.centroid)
+    placementPos = planner.getPlacementsById(path[0])
 
 def find_grasping_point(planner,tran_base_object ):
     #TODO filter out based on place ment so we know which is the actuall grasp
@@ -157,7 +163,7 @@ def move_to_pickup(robot):
     # planner.plotObject(base)
     # base.run()
 
-    return objpath, gripId, handpkg, gdb
+    return objpath, gripId, handpkg, gdb, planner
 
 if __name__=='__main__':
     rospy.init_node('grasp_node')
@@ -204,5 +210,5 @@ if __name__=='__main__':
     objectSearcherTrigger(False, 0, Pose())
     print "Entering Pick up"
     print("Test print")
-    objpath, init_graspId, handpkg, gdb = move_to_pickup(robot)
-    move_to_regrasp_placement( objpath, init_graspId, handpkg,gdb, tableresult)
+    objpath, init_graspId, handpkg, gdb, planner = move_to_pickup(robot)
+    move_to_regrasp_placement( objpath, init_graspId, handpkg,gdb, tableresult,planner)
