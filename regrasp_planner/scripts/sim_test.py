@@ -119,6 +119,8 @@ if __name__=='__main__':
       print "---FAILURE---"
       exit()
 
+    exit()
+
     '''
     result, object_pose_in_hand = in_hand_pose_estimation(tf_helper, robot, init_object_pose_in_hand)
     print "in-hand object pose estimation"
