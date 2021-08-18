@@ -64,7 +64,7 @@ class Arm:
         point = JointTrajectoryPoint()
         # point.velocities.append(0.1)
         point.positions = self.init_position
-        point.time_from_start = rospy.Duration(5)
+        point.time_from_start = rospy.Duration(3)
         goal.trajectory.points.append(point)
         self.client.send_goal_and_wait(goal)
 
@@ -77,6 +77,25 @@ class Arm:
         goal.trajectory.points.append(point)
         self.client.send_goal_and_wait(goal)
 
+class Torso:
+    def __init__(self):
+        self.joint_names = ['torso_lift_joint']
+        self.joint_value = [0.2]
+        self.client = actionlib.SimpleActionClient("/torso_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
+
+        rospy.loginfo('Waiting for joint trajectory action')    
+        self.client.wait_for_server()
+        rospy.loginfo('Found joint trajectory action!')
+        
+    def reset(self):
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.joint_names = self.joint_names
+        point = JointTrajectoryPoint()
+        # point.velocities.append(0.1)
+        point.positions = self.joint_value
+        point.time_from_start = rospy.Duration(1)
+        goal.trajectory.points.append(point)
+        self.client.send_goal_and_wait(goal)
 
 class Gripper:
     def __init__(self):
@@ -118,7 +137,7 @@ class Gripper:
         goal.trajectory.joint_names = self.joint_names
         point = JointTrajectoryPoint()
         point.positions = self.open_joints
-        point.time_from_start = rospy.Duration(3)
+        point.time_from_start = rospy.Duration(1)
         goal.trajectory.points.append(point)
         self.client.send_goal_and_wait(goal)
     
@@ -152,7 +171,9 @@ class Gripper:
         goal.trajectory.points.append(point)
         self.client.send_goal_and_wait(goal)
 
-def resetEnv(clientID, arm, gripper):
+def resetEnv(clientID, arm, gripper, torso):
+
+    torso.reset()
     # move the robot (need to search how to do)
     # moveObjectTo(clientID, "base_link_respondable", [-0.011241, -0.65001, 0.18444], [-9.568027599016204e-05, -0.7104805111885071, 0.003217362565919757, 0.7037094831466675])
 
@@ -163,7 +184,7 @@ def resetEnv(clientID, arm, gripper):
     arm.reset()
     gripper.open()
 
-    moveObjectTo(clientID, "Table", [1.0498, 0.075, 0.3946], [0.5,0.5,0.5,-0.5]) # it was [-0.025, 0.5, 0.35]
+    moveObjectTo(clientID, "Table", [0.8, 0.075, 0.3946], [0.5,0.5,0.5,-0.5]) # it was [-0.025, 0.5, 0.35]
     moveObjectTo(clientID, "Cup", [0.7768, 0.093, 0.8538], [0.5,0.5, 0.5,0.5]) # it was [0.021, 0.463, 0.7775]    
 
     # gripper.close()
@@ -173,11 +194,12 @@ if __name__ == "__main__":
     rospy.init_node('reset_fetch_env_py')
     arm = Arm()
     gripper = Gripper()
+    torso = Torso()
 
     sim.simxFinish(-1) # just in case, close all opened connections
     clientID=sim.simxStart('127.0.0.1',19999,True,True,5000,5) # Connect to CoppeliaSim
     if clientID!=-1:
-        resetEnv(clientID, arm , gripper)
+        resetEnv(clientID, arm , gripper, torso)
 
         # Now close the connection to CoppeliaSim:
         sim.simxFinish(clientID)

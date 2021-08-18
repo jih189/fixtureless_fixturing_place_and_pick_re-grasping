@@ -59,12 +59,19 @@ def transformProduct(t1, t2):
    return trans3, rot3
 
 def getMatrixFromQuaternionAndTrans(quaternion_array, trans_array):
-    quaternion_array = (quaternion_array.x,quaternion_array.y,quaternion_array.z,quaternion_array.w)
-    poseMatrix = np.matrix(tf.transformations.quaternion_matrix(quaternion_array))
-    poseMatrix[0,3] = trans_array.x
-    poseMatrix[1,3] = trans_array.y
-    poseMatrix[2,3] = trans_array.z
+    # if type(quaternion_array).__module__ == np.__name__:
+    poseMatrix = np.array(tf.transformations.quaternion_matrix(quaternion_array))
+    poseMatrix[0][3] = trans_array[0]
+    poseMatrix[1][3] = trans_array[1]
+    poseMatrix[2][3] = trans_array[2]
     return poseMatrix
+    # else:
+    #     quaternion_array = (quaternion_array.x,quaternion_array.y,quaternion_array.z,quaternion_array.w)
+    #     poseMatrix = np.matrix(tf.transformations.quaternion_matrix(quaternion_array))
+    #     poseMatrix[0,3] = trans_array.x
+    #     poseMatrix[1,3] = trans_array.y
+    #     poseMatrix[2,3] = trans_array.z
+    #     return poseMatrix
 
 def getTransformFromPoseMat(pose_mat):
     rotation = tf.transformations.quaternion_from_matrix(pose_mat) # this function takes 4*4 matrix
@@ -88,6 +95,10 @@ def PosMat_t_PandaPosMax(posmtx):
     # if not isRotationMatrix(posmtx[:3,:3]):
     #     raise Exception("The rotation part is not a rotation matrix!!")
     # convert pose mat to panda pose mat
+    # pose = Mat4( posmtx[0,0],posmtx[1,0],posmtx[2,0],0.0, \
+    #              posmtx[0,1],posmtx[1,1],posmtx[2,1],0.0, \
+    #              posmtx[0,2],posmtx[1,2],posmtx[2,2],0.0, \
+    #              posmtx[0,3] * 1000.0,posmtx[1,3] * 1000.0,posmtx[2,3] * 1000.0,1.0)
     pose = Mat4( posmtx[0][0],posmtx[1][0],posmtx[2][0],0.0, \
                  posmtx[0][1],posmtx[1][1],posmtx[2][1],0.0, \
                  posmtx[0][2],posmtx[1][2],posmtx[2][2],0.0, \
