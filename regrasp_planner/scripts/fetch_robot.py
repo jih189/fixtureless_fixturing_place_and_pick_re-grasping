@@ -245,6 +245,7 @@ class Fetch_Robot():
 
     # this function is used by cartisian motion controller
     def moveToFrame(self, transform, isInBaselink=True):
+
         if isInBaselink: # if is move in base link, then need to convert it to arm base first
             self.tf_listener.waitForTransform(self.armbasename, self.basename, rospy.Time(), rospy.Duration(4.0))
             base_link_in_torso_link_transform = self.tf_listener.lookupTransform(self.armbasename, self.basename, rospy.Time())
@@ -265,7 +266,7 @@ class Fetch_Robot():
             self.thread.join()
             self.thread = threading.Thread(target=self.publishTargetFrame, args=())
             self.thread.start()
-        
+    
         return False
 
     def setTargetFrame(self, targetposition, targetorientation):
@@ -290,6 +291,9 @@ class Fetch_Robot():
             return None, None
 
     def switchController(self, startController, stopController):
+        if not self._sim:
+            # if the robot is in real world, then there is no need to switch controller
+            return
         rospy.wait_for_service('/controller_manager/list_controllers')
         try:
             list_controller = rospy.ServiceProxy('/controller_manager/list_controllers', ListControllers)
@@ -328,6 +332,22 @@ class Fetch_Robot():
             if objectname in self.scene.get_known_object_names():
                 break
             second = rospy.get_time()
+
+    def attachManipulatedObject(self, objectname):
+        touch_links = self.robot.get_link_names(group=self.group_name)
+        # need to add the links which are not belong to the group
+        touch_links.append("gripper_link")
+        touch_links.append("l_gripper_finger_link")
+        touch_links.append("r_gripper_finger_link")
+        self.scene.attach_mesh(self.eef_link, objectname, touch_links=touch_links)
+        start = rospy.get_time()
+        second = rospy.get_time()
+        while (second - start) < self.timeout and not rospy.is_shutdown():
+            attached_objects = self.scene.get_attached_objects([objectname])
+            if len(attached_objects.keys()) > 0:
+                break
+            second = rospy.get_time()
+
 
     def detachManipulatedObject(self, objectname):
         # detach the object from the hand
