@@ -184,7 +184,7 @@ def regrasping(tf_helper, robot, planner, manipulation_position_list = None, tar
 
   robot.switchController('arm_controller', 'my_cartesian_motion_controller')
   
-  """Regrasp Object"""
+  """Replace Object"""
 
   init_graspPose = getMatrixFromQuaternionAndTrans(init_object_pose_in_hand[1],init_object_pose_in_hand[0])
   planner.CreatePlacementGraph()
@@ -214,7 +214,8 @@ def regrasping(tf_helper, robot, planner, manipulation_position_list = None, tar
 
   for current_placement_id, current_placement_type in path:
     """"----- Placing the object on table according to placement_id"""
-    currentPlacementPoseMat = planner.getPlacementsById([path[current_placement_id][0]])[0]
+    currentPlacementPoseMat = planner.getPlacementsById([current_placement_id])[0]
+    # currentPlacementPoseMat = planner.getPlacementsById([])[0]
     up_matrix = np.identity(4)
     up_matrix[2,3] = 0.02
     pre_tablePoseMat = tablePoseMat.dot(up_matrix)
@@ -227,9 +228,9 @@ def regrasping(tf_helper, robot, planner, manipulation_position_list = None, tar
       place_pose_in_table = rotationInZ.dot(currentPlacementPoseMat)
 
       # publish the tf
-      test_tf = getTransformFromPoseMat(tablePoseMat.dot(place_pose_in_table).dot(init_graspPose))
+      test_tf = getTransformFromPoseMat(pre_tablePoseMat.dot(place_pose_in_table).dot(init_graspPose))
       tf_helper.pubTransform("test", test_tf)
-      place_pose_tmp = base_link_in_torso_lift.dot(tablePoseMat).dot(place_pose_in_table).dot(init_graspPose)
+      place_pose_tmp = base_link_in_torso_lift.dot(pre_tablePoseMat).dot(place_pose_in_table).dot(init_graspPose)
       place_pose = getTransformFromPoseMat(place_pose_tmp)
       place_ik_result = robot.solve_ik_collision_free(place_pose, 300)
 
@@ -256,6 +257,10 @@ def regrasping(tf_helper, robot, planner, manipulation_position_list = None, tar
 
   robot.detachManipulatedObject("cup_collsion")
   
+
+  """ReGrasp Object"""
+  #if 
+
   current_object_pose_in_hand = None
   return True, current_object_pose_in_hand
 
