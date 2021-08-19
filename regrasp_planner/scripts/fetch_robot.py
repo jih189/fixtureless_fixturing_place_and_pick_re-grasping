@@ -182,7 +182,7 @@ class Fetch_Robot():
             self.gripper_client.send_goal_and_wait(goal)
 
     def openGripper(self):
-        self.setGripperWidth(.5)
+        self.setGripperWidth(.08)
     
     def closeGripper(self):
         self.setGripperWidth(0.0)
@@ -397,6 +397,33 @@ class Fetch_Robot():
         second = rospy.get_time()
         while (second - start) < self.timeout and not rospy.is_shutdown():
             if objectname in self.scene.get_known_object_names():
+                break
+            second = rospy.get_time()
+
+    def reattachManipulatedObject(self, objectname, transformInHand):
+
+        object_pose = PoseStamped()
+        object_pose.header.frame_id = "gripper_link"
+        object_pose.pose.position.x = transformInHand[0][0]
+        object_pose.pose.position.y = transformInHand[0][1]
+        object_pose.pose.position.z = transformInHand[0][2]
+
+        object_pose.pose.orientation.x = transformInHand[1][0]
+        object_pose.pose.orientation.y = transformInHand[1][1]
+        object_pose.pose.orientation.z = transformInHand[1][2]
+        object_pose.pose.orientation.w = transformInHand[1][3]
+
+        touch_links = self.robot.get_link_names(group=self.group_name)
+        # need to add the links which are not belong to the group
+        touch_links.append("gripper_link")
+        touch_links.append("l_gripper_finger_link")
+        touch_links.append("r_gripper_finger_link")
+        self.scene.attach_mesh(self.eef_link, objectname, pose=object_pose, touch_links=touch_links)
+        start = rospy.get_time()
+        second = rospy.get_time()
+        while (second - start) < self.timeout and not rospy.is_shutdown():
+            attached_objects = self.scene.get_attached_objects([objectname])
+            if len(attached_objects.keys()) > 0:
                 break
             second = rospy.get_time()
 

@@ -22,7 +22,7 @@ from database import dbaccess as db
 import tf
 
 import networkx as nx
-from  tf_util import PandaPosMax_t_PosMat
+from  tf_util import PandaPosMax_t_PosMat, PosMat_t_PandaPosMax
 
 # this is planner to plan a sequence of placement and regrasping on table for in-hand regrasping.
 class RegripPlanner():
@@ -39,7 +39,7 @@ class RegripPlanner():
         self.dbobjname = os.path.splitext(os.path.basename(objpath))[0]
 
         # regg = regrip graph
-        self.regg = nx.Graph()
+        # self.regg = nx.Graph()
         # placement graph 
         self.PlacementG = nx.Graph() 
 
@@ -49,7 +49,7 @@ class RegripPlanner():
         self.bulletworld.attachRigidBody(self.planebullnode)
 
         self.bulletworldhplowest = BulletWorld()
-        self.planebullnode1 = cd.genCollisionPlane(offset=10)
+        self.planebullnode1 = cd.genCollisionPlane(offset=25)
         self.bulletworldhplowest.attachRigidBody(self.planebullnode1)
 
         self.startnodeids = None
@@ -63,6 +63,12 @@ class RegripPlanner():
         self.handtmp = None
 
         self.objectid = self.gdb.loadIdObject(self.dbobjname)
+
+        self.inital_grasp = ("int_g", -1)
+        self.PlacementG.add_node("int_g", stable=-1)
+
+        self.end_grasp = ("end_g", -1)
+        self.PlacementG.add_node("end_g", stable=-1)
 
 
     def __loadFreeAirGrip(self):
@@ -92,6 +98,11 @@ class RegripPlanner():
             raise ValueError("Plan the freeairgrip first!")
         self.tpsmat4s, self.placementid, self.placementtype = freetabletopplacementdata
 
+    def getPointFromPose(self, pose, point):
+        return Point3(pose[0][0] * point[0] + pose[1][0] * point[1] + pose[2][0] * point[2] + pose[3][0], \
+                      pose[0][1] * point[0] + pose[1][1] * point[1] + pose[2][1] * point[2] + pose[3][1], \
+                      pose[0][2] * point[0] + pose[1][2] * point[1] + pose[2][2] * point[2] + pose[3][2])
+
     def CreatePlacementGraph(self):
         for p in range(len(self.placementid)):
             self.PlacementG.add_node(self.placementid[p], stable=self.placementtype[p])
@@ -110,48 +121,53 @@ class RegripPlanner():
                         self.PlacementG.add_edge(*edge, graspid=temp)
     
     def insert_init_graspID_as_placementGraphNode(self, graspid):
-        self.inital_grasp = ("int_g", graspid)
-        self.PlacementG.add_node("int_g",stable=-1)
-        placement_list = self.PlacementGetPlacementIdsByGraspId(graspid)
+
+        placement_list = self.getPlacementIdsByGraspId(graspid)
         for p in placement_list:
             edge = ("int_g",p)
             self.PlacementG.add_edge(*edge)
         
     def insert_end_graspID_as_placementGraphNode(self,graspid):
-        self.end_grasp = ("end_g", graspid)
-        self.PlacementG.add_node("end_g", stable=-1)
+
         placement_list = self.getPlacementIdsByGraspId(graspid)
         for p in placement_list:
             edge = ("end_g",p)
             self.PlacementG.add_edge(*edge)
 
-    # start grasp is in Panda format
-    def addStartGrasp(self, goalrotmat4, goalhandwidth):
-        self.inital_grasp = ("int_g", -1)
-        self.PlacementG.add_node("int_g", stable=-1)
-        
-        # # check which placement this grasp belong to
-        for p in range(len(self.placementid)):
-            
-            # if the hand does not hit the ground, then this placement can connect to the goal node
-            tmphnd = self.hand
-            tmphnd.setJawwidth(goalhandwidth)
-            tmphnd.setMat(pandanpmat4 = goalrotmat4 * self.tpsmat4s[p])
-            # add hand model to bulletworld
-            hndbullnode = cd.genCollisionMeshMultiNp(tmphnd.handnp)
-            result = self.bulletworld.contactTest(hndbullnode)
-            result1 = self.bulletworldhplowest.contactTest(hndbullnode)
-            if not result.getNumContacts() and not result1.getNumContacts():
-                self.PlacementG.add_edge('int_g', self.placementid[p]) 
+    # start grasp is in numpy format
+    def addStartGrasp(self, startrotmat4, starthandwidth):
 
-    # goal grasp is in Panda format
-    def addGoalGrasp(self, goalrotmat4, goalhandwidth):
-        self.end_grasp = ("end_g", -1)
-        self.PlacementG.add_node("end_g", stable=-1)
+        startrotmat4 = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * PosMat_t_PandaPosMax(startrotmat4)
+        starthandwidth *= 1000
         
         # # check which placement this grasp belong to
         for p in range(len(self.placementid)):
-            
+            # if the hand does not hit the ground, then this placement can connect to the goal node
+            tmphnd = self.hand
+            tmphnd.setJawwidth(starthandwidth)
+            tmphnd.setMat(pandanpmat4 = startrotmat4 * self.tpsmat4s[p])
+            # add hand model to bulletworld
+            hndbullnode = cd.genCollisionMeshMultiNp(tmphnd.handnp)
+            result = self.bulletworld.contactTest(hndbullnode)
+            hndbull_without_fingers_node = cd.genCollisionMeshMultiNp(tmphnd.palmnp)
+            result1 = self.bulletworldhplowest.contactTest(hndbull_without_fingers_node)
+            if not result.getNumContacts() and not result1.getNumContacts():
+                if self.placementtype[p] == 0: # when placement is stable
+                    self.PlacementG.add_edge('int_g', self.placementid[p])
+                else: # when placement is unstable
+                    p1 = self.getPointFromPose(startrotmat4 * self.tpsmat4s[p], [-20, 50, 0])
+                    p2 = self.getPointFromPose(startrotmat4 * self.tpsmat4s[p], [-20, -50, 0])
+                    if abs(p1[2] - p2[2]) < 5:
+                        self.PlacementG.add_edge('int_g', self.placementid[p])
+
+    # goal grasp is in Panda format, and goal handwidth is not in meter unit
+    def addGoalGrasp(self, goalrotmat4, goalhandwidth):
+
+        goalrotmat4 = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * PosMat_t_PandaPosMax(goalrotmat4)
+        goalhandwidth *= 1000
+
+        # # check which placement this grasp belong to
+        for p in range(len(self.placementid)):
             # if the hand does not hit the ground, then this placement can connect to the goal node
             tmphnd = self.hand
             tmphnd.setJawwidth(goalhandwidth)
@@ -159,14 +175,32 @@ class RegripPlanner():
             # add hand model to bulletworld
             hndbullnode = cd.genCollisionMeshMultiNp(tmphnd.handnp)
             result = self.bulletworld.contactTest(hndbullnode)
-            result1 = self.bulletworldhplowest.contactTest(hndbullnode)
+            hndbull_without_fingers_node = cd.genCollisionMeshMultiNp(tmphnd.palmnp)
+            result1 = self.bulletworldhplowest.contactTest(hndbull_without_fingers_node)
             if not result.getNumContacts() and not result1.getNumContacts():
-                self.PlacementG.add_edge('end_g', self.placementid[p])   
+                if self.placementtype[p] == 0: # when placement is stable
+                    addededge = ('end_g', self.placementid[p])
+                    if not self.PlacementG.has_edge(*addededge):
+                        self.PlacementG.add_edge(*addededge, graspid = [(goalrotmat4, goalhandwidth)])
+                    else:
+                        temp = self.PlacementG.edges['end_g', self.placementid[p]]['graspid']
+                        temp.append((goalrotmat4, goalhandwidth))
+                        self.PlacementG.add_edge(*addededge, graspid = temp)
+                else: # when placement is unstable
+                    p1 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [-20, 50, 0])
+                    p2 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [-20, -50, 0])
+                    if abs(p1[2] - p2[2]) < 5: #TODO this value need to be tuned according to the object
+                        addededge = ('end_g', self.placementid[p])
+                        if not self.PlacementG.has_edge(*addededge):    
+                            self.PlacementG.add_edge(*addededge, graspid = [(goalrotmat4, goalhandwidth)])
+                        else:
+                            temp = self.PlacementG.edges['end_g', self.placementid[p]]['graspid']
+                            temp.append((goalrotmat4, goalhandwidth))
+                            self.PlacementG.add_edge(*addededge, graspid = temp)
 
     def find_shortest_PlacementG_path(self):
         path = nx.shortest_path(self.PlacementG,self.inital_grasp[0], self.end_grasp[0])
         #remove end graps node and init grasp node in graph path.
-        path.pop()
         path.pop(0)
         path_and_type = []
         for p in path:
@@ -189,29 +223,29 @@ class RegripPlanner():
             print("error, no Placement path be grasp points")
         return grasp_traj
     
-    def generateGraph(self):
-        for p in range(len(self.placementid)):
-            self.regg.add_node(self.placementid[p])
+    # def generateGraph(self):
+    #     for p in range(len(self.placementid)):
+    #         self.regg.add_node(self.placementid[p])
 
-        # according the grip, generate the edge between placements
-        for g in range(len(self.freegripid)):
-            sql = "SELECT freetabletopgrip.idfreetabletopplacement FROM freetabletopgrip WHERE \
-                freetabletopgrip.idfreeairgrip=%d" % self.freegripid[g]
-            result = self.gdb.execute(sql)
-            if len(result) != 0 and len(result) != 1:
-                for edge in list(itertools.combinations(np.array(result)[:,0], 2)):
-                    if not self.regg.has_edge(*edge):
-                        self.regg.add_edge(*edge)   
+    #     # according the grip, generate the edge between placements
+    #     for g in range(len(self.freegripid)):
+    #         sql = "SELECT freetabletopgrip.idfreetabletopplacement FROM freetabletopgrip WHERE \
+    #             freetabletopgrip.idfreeairgrip=%d" % self.freegripid[g]
+    #         result = self.gdb.execute(sql)
+    #         if len(result) != 0 and len(result) != 1:
+    #             for edge in list(itertools.combinations(np.array(result)[:,0], 2)):
+    #                 if not self.regg.has_edge(*edge):
+    #                     self.regg.add_edge(*edge)   
 
 
-                self.regg.add_edge('s', self.placementid[p])       
+    #             self.regg.add_edge('s', self.placementid[p])       
 
-    def searchPath(self):
-        result = []
-        self.shortestpaths = nx.all_shortest_paths(self.regg, source = 's', target = 'g')
-        for path in self.shortestpaths:
-            result.append(path[1:-1])
-        return result
+    # def searchPath(self):
+    #     result = []
+    #     self.shortestpaths = nx.all_shortest_paths(self.regg, source = 's', target = 'g')
+    #     for path in self.shortestpaths:
+    #         result.append(path[1:-1])
+    #     return result
 
     # get all grasp poses in normal format and jawwdith in meter unit
     # this function will return a list like
@@ -337,7 +371,7 @@ class RegripPlanner():
             showtable[i] = (i - int(numOfP/2)) * distancebetweencell
 
     def showgraph(self):
-        nx.draw(self.regg, with_labels=True)
+        nx.draw(self.PlacementG, with_labels=True)
         plt.draw()
         plt.show()
 
