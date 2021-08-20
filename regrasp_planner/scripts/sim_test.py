@@ -236,6 +236,9 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
   # planner.showgraph()
 
   for i, (currentplacementid, currentplacementtype) in enumerate(path):
+    # if the current planning placement is end goal, then we can break the loop
+    if currentplacementid == "end_g":
+      break
     foundsolution = False
 
     for tableangle in [0.0, 0.7853975, 1.570795, 2.3561925, 3.14159, 3.9269875, 4.712385, 5.4977825]:
@@ -268,6 +271,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
         # and the candidate jawwidth should be in meter unit
 
         # plan the pre place position
+        print "check goal grasp"
         robot.reattachManipulatedObject("cup_collision", getTransformFromPoseMat(np.linalg.inv(nextgrasp_candidate)))
         if not feasible(manipulation_position.dot(real_placement).dot(nextgrasp_candidate)):
           continue
@@ -298,40 +302,52 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
           if dmgresult == None:
             continue
           else:
+            # move to pre placing position
+            table_buffer = 0.01
             pre_placing_grasp = getTransformFromPoseMat(placing_grasp)
-            pre_placing_grasp[0][2] += 0.01
+            pre_placing_grasp[0][2] += table_buffer
 
             placing_plan = robot.planto_pose(pre_placing_grasp)
             robot.display_trajectory(placing_plan)
             print("Placing object down in unstable pos")
             # raw_input("ready to place") 
             robot.execute_plan(placing_plan)
+            
+            # place the object down to the table
+            robot.switchController('my_cartesian_motion_controller', 'arm_controller')
+            while not rospy.is_shutdown():
+              if robot.moveToFrame(getTransformFromPoseMat(placing_grasp), True):
+                break
+              rospy.sleep(0.05)
+            robot.switchController('arm_controller', 'my_cartesian_motion_controller')
+
             robot.detachManipulatedObject("cup_collsion")
             # open the gripper according to the next grasp width
-            robot.setGripperWidth(candidate_jawwidth +.01)
+            robot.setGripperWidth(candidate_jawwidth +.03)
             #Convert from object frame to torso frame
-            base_link_in_torso_lift = tf_helper.getPoseMat('/torso_lift_link', '/base_link')
             object_in_base_link = manipulation_position.dot(real_placement)
-            object_in_torso_link = base_link_in_torso_lift.dot(object_in_base_link)
-              
+
+            robot.switchController('my_cartesian_motion_controller', 'arm_controller')
             for graspPos in dmgresult:
-              regraspTran = getTransformFromPoseMat(object_in_torso_link.dot(graspPos))
-              # Set up and run 
-              robot.switchController('my_cartesian_motion_controller', 'arm_controller')
+
+              regraspTran = getTransformFromPoseMat(object_in_base_link.dot(graspPos))
+            
+              # publish the next regrasp pos in the tf for debug
+              tf_helper.pubTransform("regrasp pos", regraspTran)
+              
               # move to regrasp pose
-              # raw_input("ready to move to grasp")
               while not rospy.is_shutdown():
                 if robot.moveToFrame(regraspTran, True):
                   break
                 rospy.sleep(0.05)
-              robot.switchController('arm_controller', 'my_cartesian_motion_controller')
+
+            robot.switchController('arm_controller', 'my_cartesian_motion_controller')
             print("Finished regrasp with DMG")
 
-
-        robot.setGripperWidth(candidate_jawwidth)
+        robot.setGripperWidth(candidate_jawwidth - 0.02)
         robot.attachManipulatedObject("cup_collsion")
-        result, pickupTrans = pickup(tf_helper)
-        current_object_pose_in_hand = pickupTrans
+        pickup(tf_helper)
+        init_graspPose = nextgrasp_candidate
         foundsolution = True
         break
       if foundsolution:
@@ -339,7 +355,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
     if not foundsolution:
       print "we need to replan the path"
       break
-    
+  
 
   current_object_pose_in_hand = None
   return True, current_object_pose_in_hand
@@ -415,6 +431,8 @@ if __name__=='__main__':
   else:
     print "---FAILURE---"
     exit()
+
+  robot.detachManipulatedObject("cup_collision")
 
   # # show the collision net
   # def updateworld(world, task):

@@ -201,6 +201,7 @@ class RegripPlanner():
     def find_shortest_PlacementG_path(self):
         path = nx.shortest_path(self.PlacementG,self.inital_grasp[0], self.end_grasp[0])
         #remove end graps node and init grasp node in graph path.
+        #path.pop()
         path.pop(0)
         path_and_type = []
         for p in path:
