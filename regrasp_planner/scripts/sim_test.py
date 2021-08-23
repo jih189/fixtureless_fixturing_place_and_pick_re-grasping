@@ -81,7 +81,8 @@ def grasp_object( planner, object_pose, gripper_pos=None):
     for i, (obj_grasp_pos, jaw_width) in enumerate(gripper_pos_list):
 
         obj_grasp_trans_obframe = getTransformFromPoseMat(obj_grasp_pos) #Tranfrom gripper posmatx to (trans,rot)
-        obj_pre_grasp_trans =  transformProduct(obj_grasp_trans_obframe, [[-0.06,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
+        # obj_grasp_trans_obframe = transformProduct(obj_grasp_trans_obframe, [[0.01,0,0],[0,0,0,1]]) # try to move the gripper forward little
+        obj_pre_grasp_trans =  transformProduct(obj_grasp_trans_obframe, [[-0.055,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
         obj_pre_grasp_trans = transformProduct(tran_base_object, obj_pre_grasp_trans)
         obj_grasp_trans = transformProduct(tran_base_object, obj_grasp_trans_obframe)
 
@@ -208,14 +209,15 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
    
   """Replace Object"""
   init_graspPose = getMatrixFromQuaternionAndTrans(init_grasp_transform_in_object_frame[1],init_grasp_transform_in_object_frame[0]) #int_Grasp in object frame
-  placementsequenceplanningtimestart = time.time()
   planner.CreatePlacementGraph()
   # the init grasp pose is numpy format, init jawwidth is in meter unit
   planner.addStartGrasp(init_graspPose,init_jawwidth)
   
+  placementsequenceplanningtimestart = time.time()
   # add goal grasps into the graph
   for grasp, jawwidth in target_grasps:
     planner.addGoalGrasp(grasp, jawwidth)
+  print "time to add target grasp = ", time.time() - placementsequenceplanningtimestart
 
   try:
     path = planner.find_shortest_PlacementG_path()
@@ -226,7 +228,6 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
   # get the common grasps between placements on the path
   grasps_between_placements = planner.get_placement_grasp_trajectory(path)
 
-  print "time for planning placement sequence = ", time.time() - placementsequenceplanningtimestart
   
   print "final path"
   print path

@@ -184,7 +184,7 @@ class Fetch_Robot():
             self.gripper_client.send_goal_and_wait(goal)
 
     def openGripper(self):
-        self.setGripperWidth(.08)
+        self.setGripperWidth(.09)
     
     def closeGripper(self):
         self.setGripperWidth(0.0)
