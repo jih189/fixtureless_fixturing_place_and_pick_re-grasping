@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-import enum
 import os
 import rospy
 from fetch_robot import Fetch_Robot
-import tf
 from panda3d.bullet import BulletDebugNode
 from tf_util import PosMat_t_PandaPosMax, TF_Helper, transformProduct, getMatrixFromQuaternionAndTrans, getTransformFromPoseMat, PandaPosMax_t_PosMat
 from rail_segmentation.srv import SearchTable
@@ -17,6 +15,7 @@ from utils import robotmath as rm
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import pandaplotutils.pandageom as pandageom
+import time
 
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -63,7 +62,7 @@ def detection_object(tf_helper, robot):
 
   # add the cup into the moveit
   tran_base_Cup = tf_helper.getTransform('/base_link', '/Cup') #return tuple (trans,rot) of parent_lin to child_link
-  robot.addCollisionObject("cup_collsion", tran_base_Cup,'objects/cup.stl')
+  robot.addCollisionObject("cup_collision", tran_base_Cup, 'objects/cup.stl')
 
   return True, tran_base_Cup
 
@@ -90,13 +89,13 @@ def grasp_object( planner, object_pose, gripper_pos=None):
         grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_grasp_trans, 10)
 
         if grasp_ik_result == None:
-            print 'check on grasp ', i
+            # print 'check on grasp ', i
             continue
 
         pre_grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_pre_grasp_trans, 10)
 
         if pre_grasp_ik_result == None:
-            print 'check on grasp ', i
+            # print 'check on grasp ', i
             continue
         
         return obj_pre_grasp_trans, pre_grasp_ik_result, obj_grasp_trans, jaw_width, obj_grasp_trans_obframe
@@ -130,12 +129,12 @@ def grasp_object( planner, object_pose, gripper_pos=None):
   robot.switchController('arm_controller', 'my_cartesian_motion_controller')
 
   # close the gripper with proper width
-  print "grasp width = ", gripper_width
+  # print "grasp width = ", gripper_width
   # raw_input("ready to close grasp")
   robot.closeGripper()
 
   # attach object into the hand
-  robot.attachManipulatedObject("cup_collsion")
+  robot.attachManipulatedObject("cup_collision")
 
   return True, obj_grasp_trans_obframe, gripper_width
 
@@ -200,9 +199,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
 
   # input pose should be numpy format in the base_link
   def feasible(inputpose):
-    base_link_in_torso_lift = tf_helper.getPoseMat('/torso_lift_link', '/base_link')
-    place_pose = getTransformFromPoseMat(base_link_in_torso_lift.dot(inputpose))
-    place_ik_result = robot.solve_ik_collision_free(place_pose, 300)
+    place_ik_result = robot.solve_ik_sollision_free_in_base(getTransformFromPoseMat(inputpose), 30)
 
     if place_ik_result != None:
       return True
@@ -211,6 +208,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
    
   """Replace Object"""
   init_graspPose = getMatrixFromQuaternionAndTrans(init_grasp_transform_in_object_frame[1],init_grasp_transform_in_object_frame[0]) #int_Grasp in object frame
+  placementsequenceplanningtimestart = time.time()
   planner.CreatePlacementGraph()
   # the init grasp pose is numpy format, init jawwidth is in meter unit
   planner.addStartGrasp(init_graspPose,init_jawwidth)
@@ -227,6 +225,8 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
 
   # get the common grasps between placements on the path
   grasps_between_placements = planner.get_placement_grasp_trajectory(path)
+
+  print "time for planning placement sequence = ", time.time() - placementsequenceplanningtimestart
   
   print "final path"
   print path
@@ -270,14 +270,13 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
         # at this point, the next grasp candidate should be numpy pose matrix in object frame
         # and the candidate jawwidth should be in meter unit
 
-        # plan the pre place position
-        print "check goal grasp"
+        # check whether the next grasp is feasible or not
         robot.reattachManipulatedObject("cup_collision", getTransformFromPoseMat(np.linalg.inv(nextgrasp_candidate)))
         if not feasible(manipulation_position.dot(real_placement).dot(nextgrasp_candidate)):
           continue
-
         robot.reattachManipulatedObject("cup_collision", getTransformFromPoseMat(np.linalg.inv(init_graspPose)))
 
+        # check the type of current placement
         if currentplacementtype == 0: # current placement is table
           robot.openGripper()
 
@@ -287,7 +286,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
           print("Placing object down in stable pos")
           # raw_input("ready to place")
           robot.execute_plan(placing_plan)
-          robot.detachManipulatedObject("cup_collsion")
+          robot.detachManipulatedObject("cup_collision")
           
           picking_plan = robot.planto_pose(getTransformFromPoseMat(manipulation_position.dot(real_placement).dot(nextgrasp_candidate)))
           robot.display_trajectory(picking_plan)
@@ -321,7 +320,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
               rospy.sleep(0.05)
             robot.switchController('arm_controller', 'my_cartesian_motion_controller')
 
-            robot.detachManipulatedObject("cup_collsion")
+            robot.detachManipulatedObject("cup_collision")
             # open the gripper according to the next grasp width
             robot.setGripperWidth(candidate_jawwidth +.03)
             #Convert from object frame to torso frame
@@ -345,7 +344,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, manipulation_position_list
             print("Finished regrasp with DMG")
 
         robot.setGripperWidth(candidate_jawwidth - 0.02)
-        robot.attachManipulatedObject("cup_collsion")
+        robot.attachManipulatedObject("cup_collision")
         pickup(tf_helper)
         init_graspPose = nextgrasp_candidate
         foundsolution = True

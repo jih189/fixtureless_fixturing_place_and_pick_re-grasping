@@ -79,6 +79,8 @@ class Fetch_Robot():
         self.group_names = self.robot.get_group_names()
         print "=========== Robot Groups:", self.group_names
 
+        self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject)
+
         self.timeout = 4.0
 
         ############ parameters for cartisian motion controller #######################
@@ -334,6 +336,7 @@ class Fetch_Robot():
             second = rospy.get_time()
 
     def attachManipulatedObject(self, objectname):
+
         touch_links = self.robot.get_link_names(group=self.group_name)
         # need to add the links which are not belong to the group
         touch_links.append("gripper_link")
@@ -400,32 +403,28 @@ class Fetch_Robot():
                 break
             second = rospy.get_time()
 
+    # this function will reattach the object in hand by given new object in hand pose
     def reattachManipulatedObject(self, objectname, transformInHand):
+        self.detachManipulatedObject(objectname)
 
-        object_pose = PoseStamped()
-        object_pose.header.frame_id = "gripper_link"
-        object_pose.pose.position.x = transformInHand[0][0]
-        object_pose.pose.position.y = transformInHand[0][1]
-        object_pose.pose.position.z = transformInHand[0][2]
+        collision_object_msgs = moveit_msgs.msg.CollisionObject()
+        collision_object_msgs.operation = collision_object_msgs.MOVE
 
-        object_pose.pose.orientation.x = transformInHand[1][0]
-        object_pose.pose.orientation.y = transformInHand[1][1]
-        object_pose.pose.orientation.z = transformInHand[1][2]
-        object_pose.pose.orientation.w = transformInHand[1][3]
+        collision_object_msgs.id = objectname
+        inhandpose = Pose()
+        inhandpose.orientation.x = transformInHand[1][0]
+        inhandpose.orientation.y = transformInHand[1][1]
+        inhandpose.orientation.z = transformInHand[1][2]
+        inhandpose.orientation.w = transformInHand[1][3]
+        inhandpose.position.x = transformInHand[0][0]
+        inhandpose.position.y = transformInHand[0][1]
+        inhandpose.position.z = transformInHand[0][2]
+        collision_object_msgs.mesh_poses = [inhandpose]
+        collision_object_msgs.header.stamp = rospy.Time.now()
+        collision_object_msgs.header.frame_id = "gripper_link"
 
-        touch_links = self.robot.get_link_names(group=self.group_name)
-        # need to add the links which are not belong to the group
-        touch_links.append("gripper_link")
-        touch_links.append("l_gripper_finger_link")
-        touch_links.append("r_gripper_finger_link")
-        self.scene.attach_mesh(self.eef_link, objectname, pose=object_pose, touch_links=touch_links)
-        start = rospy.get_time()
-        second = rospy.get_time()
-        while (second - start) < self.timeout and not rospy.is_shutdown():
-            attached_objects = self.scene.get_attached_objects([objectname])
-            if len(attached_objects.keys()) > 0:
-                break
-            second = rospy.get_time()
+        self.collision_object_pub.publish(collision_object_msgs)
+        self.attachManipulatedObject(objectname)
 
     def addManipulatedObject(self, objectname, x, y, z, rx, ry, rz, rw, filename):
         touch_links = self.robot.get_link_names(group=self.group_name)

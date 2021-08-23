@@ -71,9 +71,9 @@ my_cartesian_motion_controller:
     - wrist_roll_joint
 
   pd_gains:
-      trans_x: {p: 5000.0}
-      trans_y: {p: 5000.0}
-      trans_z: {p: 5000.0}
+      trans_x: {p: 5.0}
+      trans_y: {p: 1000.0}
+      trans_z: {p: 1000.0}
       rot_x: {p: 1000.0}
       rot_y: {p: 1000.0}
       rot_z: {p: 1000.0}
