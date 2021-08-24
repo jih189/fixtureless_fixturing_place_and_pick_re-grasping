@@ -369,8 +369,11 @@ if __name__=='__main__':
   robot = Fetch_Robot(sim=True)
   tf_helper = TF_Helper()
 
-  object_name = "book"
-  object_tf_name = "/Book"
+  # object_name = "book"
+  # object_tf_name = "/Book"
+  object_name = "cup"
+  object_tf_name = "/Cup"
+
 
   base = pandactrl.World(camp=[700,300,1400], lookatp=[0,0,0])
   this_dir, this_filename = os.path.split(__file__)   

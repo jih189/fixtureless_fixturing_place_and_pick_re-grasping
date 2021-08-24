@@ -168,6 +168,13 @@ class RegripPlanner():
 
         # # check which placement this grasp belong to
         for p in range(len(self.placementid)):
+
+            if self.placementtype[p] != 0: # if placement is not stable, then check whether the gripper is perpendicular to the table
+                p1 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [-20, 50, 0])
+                p2 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [-20, -50, 0])
+                if abs(p1[2] - p2[2]) >= 5:
+                    continue
+
             # if the hand does not hit the ground, then this placement can connect to the goal node
             tmphnd = self.hand
             tmphnd.setJawwidth(goalhandwidth)
@@ -178,25 +185,13 @@ class RegripPlanner():
             hndbull_without_fingers_node = cd.genCollisionMeshMultiNp(tmphnd.palmnp)
             result1 = self.bulletworldhplowest.contactTest(hndbull_without_fingers_node)
             if not result.getNumContacts() and not result1.getNumContacts():
-                if self.placementtype[p] == 0: # when placement is stable
-                    addededge = ('end_g', self.placementid[p])
-                    if not self.PlacementG.has_edge(*addededge):
-                        self.PlacementG.add_edge(*addededge, graspid = [(goalrotmat4, goalhandwidth)])
-                    else:
-                        temp = self.PlacementG.edges['end_g', self.placementid[p]]['graspid']
-                        temp.append((goalrotmat4, goalhandwidth))
-                        self.PlacementG.add_edge(*addededge, graspid = temp)
-                else: # when placement is unstable
-                    p1 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [-20, 50, 0])
-                    p2 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [-20, -50, 0])
-                    if abs(p1[2] - p2[2]) < 5: #TODO this value need to be tuned according to the object
-                        addededge = ('end_g', self.placementid[p])
-                        if not self.PlacementG.has_edge(*addededge):    
-                            self.PlacementG.add_edge(*addededge, graspid = [(goalrotmat4, goalhandwidth)])
-                        else:
-                            temp = self.PlacementG.edges['end_g', self.placementid[p]]['graspid']
-                            temp.append((goalrotmat4, goalhandwidth))
-                            self.PlacementG.add_edge(*addededge, graspid = temp)
+                addededge = ('end_g', self.placementid[p])
+                if not self.PlacementG.has_edge(*addededge):
+                    self.PlacementG.add_edge(*addededge, graspid = [(goalrotmat4, goalhandwidth)])
+                else:
+                    temp = self.PlacementG.edges['end_g', self.placementid[p]]['graspid']
+                    temp.append((goalrotmat4, goalhandwidth))
+                    self.PlacementG.add_edge(*addededge, graspid = temp)
 
     def find_shortest_PlacementG_path(self):
         path = nx.shortest_path(self.PlacementG,self.inital_grasp[0], self.end_grasp[0])
