@@ -194,6 +194,8 @@ if __name__=='__main__':
         print e
     
     objectSearcherTrigger(False, 0, Pose())
+
+    
     print "Entering Pick up"
     print("Test print")
 

@@ -2,6 +2,7 @@
 import os
 import rospy
 from fetch_robot import Fetch_Robot
+from geometry_msgs.msg import Pose
 from panda3d.bullet import BulletDebugNode
 from tf_util import PosMat_t_PandaPosMax, TF_Helper, transformProduct, getMatrixFromQuaternionAndTrans, getTransformFromPoseMat, PandaPosMax_t_PosMat
 from rail_segmentation.srv import SearchTable
@@ -16,6 +17,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import pandaplotutils.pandageom as pandageom
 import time
+from icra20_manipulation_pose.srv import SearchObject
 
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -34,16 +36,24 @@ def detect_table_and_placement(tf_helper, robot):
   rospy.wait_for_service('table_searcher/search_table')
   tableSearcher = rospy.ServiceProxy('table_searcher/search_table', SearchTable)
 
-  # add the table into moveit
-  tran_base_Table = tf_helper.getTransform('/base_link', '/Table') 
-  robot.addCollisionObject("table_collsion", tran_base_Table,'objects/Table.stl', size_scale=1.0)
-
   # analyze where to manipulate the object
   try:
     tableresult = tableSearcher()
   except rospy.ServiceException as exc:
       print("Service did not process request: " + str(exc))
       return False, None
+
+  r = R.from_quat([tableresult.orientation.x, tableresult.orientation.y, tableresult.orientation.z, tableresult.orientation.w])
+  # need to adjust the rotation of the table
+  original_r = r.as_euler('zyx')
+  table_quaternion = R.from_euler('zyx', [0,original_r[1], original_r[2]]).as_quat()
+
+  robot.addCollisionTable("table", tableresult.center.x, tableresult.center.y, tableresult.center.z, \
+            table_quaternion[0], table_quaternion[1], table_quaternion[2], table_quaternion[3], \
+            tableresult.width, tableresult.depth, 0.001)
+  robot.addCollisionTable("table_base", tableresult.center.x, tableresult.center.y, tableresult.center.z - 0.3, \
+          table_quaternion[0], table_quaternion[1], table_quaternion[2], table_quaternion[3], \
+          tableresult.width, tableresult.depth, 0.6)
 
   # show the position tf in rviz
   tf_helper.pubTransform("place_pos", ((tableresult.centroid.x, tableresult.centroid.y, tableresult.centroid.z), \
@@ -57,14 +67,30 @@ def detect_table_and_placement(tf_helper, robot):
 def detection_object(tf_helper, robot, object_name, object_tf_name):
 
   # call the pose estimation node
-  # TODO
+  # get the object searcher trigger to control the tracker
+  rospy.wait_for_service('searchObject')
+  objectSearcherTrigger = rospy.ServiceProxy('searchObject', SearchObject)
+
+  ## launch the tracker
+  objectSearcherTrigger(True, 1, Pose())
+
+  try:
+      # add the object to the moveit
+      target_transform = tf_helper.getTransform('/base_link', '/' + object_name)
+      robot.addCollisionObject(object_name + "_collision", target_transform, "objects/" + object_name + ".stl")
+  except Exception as e:
+      objectSearcherTrigger(False, 0, Pose())
+      print e
+      return False, None
+  
+  objectSearcherTrigger(False, 0, Pose())
   # if failure, then return False
 
   # add the object into the moveit
-  tran_base_Obj = tf_helper.getTransform('/base_link', object_tf_name) #return tuple (trans,rot) of parent_lin to child_link
-  robot.addCollisionObject(object_name + "_collision", tran_base_Obj, 'objects/' + object_name + '.stl')
+  # tran_base_Obj = tf_helper.getTransform('/base_link', object_tf_name) #return tuple (trans,rot) of parent_lin to child_link
+  # robot.addCollisionObject(object_name + "_collision", tran_base_Obj, 'objects/' + object_name + '.stl')
 
-  return True, tran_base_Obj
+  return True, target_transform
 
 # grasp_object will try to grasp the object
 # input: object pose
@@ -86,7 +112,7 @@ def grasp_object( planner, object_pose, gripper_pos=None, object_name = None):
 
         obj_grasp_trans_obframe = getTransformFromPoseMat(obj_grasp_pos) #Tranfrom gripper posmatx to (trans,rot)
         # obj_grasp_trans_obframe = transformProduct(obj_grasp_trans_obframe, [[0.01,0,0],[0,0,0,1]]) # try to move the gripper forward little
-        obj_pre_grasp_trans =  transformProduct(obj_grasp_trans_obframe, [[-0.055,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
+        obj_pre_grasp_trans =  transformProduct(obj_grasp_trans_obframe, [[-0.065,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
         obj_pre_grasp_trans = transformProduct(tran_base_object, obj_pre_grasp_trans)
         obj_grasp_trans = transformProduct(tran_base_object, obj_grasp_trans_obframe)
 
@@ -364,9 +390,12 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
   current_object_pose_in_hand = None
   return True, current_object_pose_in_hand
 
+def move_arm_to_startPos(robot):
+  pass
+
 if __name__=='__main__':
   rospy.init_node('test_node')
-  robot = Fetch_Robot(sim=True)
+  robot = Fetch_Robot(sim=False)
   tf_helper = TF_Helper()
 
   # object_name = "book"
@@ -374,6 +403,10 @@ if __name__=='__main__':
   object_name = "cup"
   object_tf_name = "/Cup"
 
+  # answer = raw_input("Move robot to start positon: is area clear? Press 'Y' ")
+  # if answer == 'Y':
+  #   move_arm_to_startPos(robot)
+  
 
   base = pandactrl.World(camp=[700,300,1400], lookatp=[0,0,0])
   this_dir, this_filename = os.path.split(__file__)   
@@ -398,7 +431,7 @@ if __name__=='__main__':
   else:
     print "---FAILURE---"
     exit()
-
+  raw_input("go grasp object")
   result, init_grasp_transform_in_object_frame, init_jawwidth = grasp_object(planner, object_pose_in_base_link, object_name=object_name)
   print "grasp object"
   if result:
@@ -406,7 +439,9 @@ if __name__=='__main__':
   else:
     print "---FAILURE---"
     exit()
-
+  
+  raw_input("Ready to pick up object?")
+  
   result = pickup(tf_helper)
   print "pick up object"
   if result:
@@ -414,6 +449,7 @@ if __name__=='__main__':
   else:
     print "---FAILURE---"
     exit()
+
 
   '''
   result, object_pose_in_hand = in_hand_pose_estimation(tf_helper, robot, init_grasp_transform_in_object_frame)
@@ -424,6 +460,8 @@ if __name__=='__main__':
     print "---FAILURE---"
     exit()
   '''
+
+  raw_input("ready to regrasp")
 
   # extract the list of target grasps
   result, target_grasps = getTargetGrasps(gdb, object_name=object_name)
