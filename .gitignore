@@ -1,1 +1,4 @@
 CMakelists.txt
+fetch_ros
+perception_pcl
+fetch_coppliasim/sceen/test_Just_table.ttt
