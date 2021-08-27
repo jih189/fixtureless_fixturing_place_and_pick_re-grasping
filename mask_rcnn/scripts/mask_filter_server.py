@@ -37,7 +37,7 @@ class object_segmentation_server:
             transforms.ToTensor()
         ])
         print("Ready to run filter!")
-        self.object_name = "book"
+        self.object_name = sys.argv[1]
         rospy.spin()
 
     def imgmsg_to_cv2(self, img_msg):

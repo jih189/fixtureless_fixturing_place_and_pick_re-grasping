@@ -131,7 +131,7 @@ void softmax(std::vector<float> &input) {
 }
 
 // This is a thread to keep publishing the object's pose
-void publish_object_state(int* publish_rate){
+void publish_object_state(int* publish_rate, std::string* object_name){
 
   ros::NodeHandle n;
   
@@ -156,7 +156,7 @@ void publish_object_state(int* publish_rate){
 
     object_pose_transform.setOrigin(tf_trans);
     object_pose_transform.setRotation(tf_quat);
-    object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "book"));
+    object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", *object_name));
   }
 }
 
@@ -187,10 +187,6 @@ int main(int argc, char **argv)
     isrunning = false;
     target_pose.setIdentity();
 
-    // spawn another thread
-    int rate_b = 5;
-    boost::thread thread_b(publish_object_state, &rate_b);
-
     // initialize the pcl
     pcl::console::setVerbosityLevel(pcl::console::L_ALWAYS);
 
@@ -206,6 +202,11 @@ int main(int argc, char **argv)
     }
     std::cout<<"Using config file: "<<config_dir<<std::endl;
     ConfigParser cfg(config_dir);
+
+    // spawn another thread
+    int rate_b = 5;
+    std::string object_name = cfg.yml["model_name"].as<std::string>();
+    boost::thread thread_b(publish_object_state, &rate_b, &object_name);
 
     // load the point pair features of the object
     std::map<std::vector<int>, std::vector<std::pair<int, int>>> ppfs;
@@ -250,7 +251,7 @@ int main(int argc, char **argv)
     pose_particles.reserve(30);
 
     // marker helper
-    MarkerHelper marker_helper(nh, "package://fetch_description/meshes/object/book.obj");
+    MarkerHelper marker_helper(nh, cfg.yml["object_mesh_path"].as<std::string>());
 
     bool isTracking = false;
 
