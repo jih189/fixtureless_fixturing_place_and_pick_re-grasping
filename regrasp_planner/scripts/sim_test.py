@@ -191,6 +191,27 @@ def pickup(tf_helper):
 
   return True, target_transform
 
+def placedown(placing_grasp,):
+  # move to pre placing position
+  buffer = 0.02
+  pre_placing_grasp = getTransformFromPoseMat(placing_grasp)
+  pre_placing_grasp[0][2] += buffer
+
+  placing_plan = robot.planto_pose(pre_placing_grasp)
+  robot.display_trajectory(placing_plan)
+  print("Placing object down in unstable pos")
+  # raw_input("ready to place") 
+  robot.execute_plan(placing_plan)
+  
+  # place the object down to the table
+  robot.switchController('my_cartesian_motion_controller', 'arm_controller')
+  while not rospy.is_shutdown():
+    if robot.moveToFrame(getTransformFromPoseMat(placing_grasp), True):
+      break
+    rospy.sleep(0.05)
+  robot.switchController('arm_controller', 'my_cartesian_motion_controller')
+
+
 # regrasping will regrasp the object on the table
 # input: list of possible manipulating place on the table and current object pose in the hand
 # output: issuccess, final object pose in hand
@@ -254,6 +275,11 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
       ## calculate the gripper pose on table
       real_placement = rotationInZ.dot(planner.getPlacementsById([currentplacementid])[0])
       placing_grasp = manipulation_position.dot(real_placement).dot(init_graspPose)
+      # move to pre placing position
+      table_buffer = 0.01
+      placing_grasp = getTransformFromPoseMat(placing_grasp)
+      placing_grasp[0][2] += table_buffer
+      placing_grasp = getMatrixFromQuaternionAndTrans(placing_grasp[1],placing_grasp[0])
 
       # need to attach the object in hand properly
       robot.reattachManipulatedObject(object_name + "_collision", getTransformFromPoseMat(np.linalg.inv(init_graspPose)))
@@ -283,14 +309,10 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
 
         # check the type of current placement
         if currentplacementtype == 0: # current placement is table
-          robot.openGripper()
-
+          
           # place the object down to the table #TODO: for unstable placement, we should plan the trajectory 
-          placing_plan = robot.planto_pose(getTransformFromPoseMat(placing_grasp))
-          robot.display_trajectory(placing_plan)
-          print("Placing object down in stable pos")
-          # raw_input("ready to place")
-          robot.execute_plan(placing_plan)
+          placedown(placing_grasp)
+          robot.openGripper()
           robot.detachManipulatedObject(object_name + "_collision")
           
           picking_plan = robot.planto_pose(getTransformFromPoseMat(manipulation_position.dot(real_placement).dot(nextgrasp_candidate)))
@@ -305,50 +327,34 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
           dmgresult = dmgplanner.getTrajectory(init_graspPose, nextgrasp_candidate, candidate_jawwidth, manipulation_position.dot(real_placement), base)
           if dmgresult == None:
             continue
-          else:
-            # move to pre placing position
-            table_buffer = 0.01
-            pre_placing_grasp = getTransformFromPoseMat(placing_grasp)
-            pre_placing_grasp[0][2] += table_buffer
+          
+          placedown(placing_grasp)
 
-            placing_plan = robot.planto_pose(pre_placing_grasp)
-            robot.display_trajectory(placing_plan)
-            print("Placing object down in unstable pos")
-            # raw_input("ready to place") 
-            robot.execute_plan(placing_plan)
+          robot.detachManipulatedObject(object_name + "_collision")
+          # open the gripper according to the next grasp width
+          robot.setGripperWidth(candidate_jawwidth-.02)   # Check fetch robot setGripperwidth method. Something is wrong. It just opens the gripper to max
+          #Convert from object frame to torso frame
+          object_in_base_link = manipulation_position.dot(real_placement)
+
+          robot.switchController('my_cartesian_motion_controller', 'arm_controller')
+          for graspPos in dmgresult:
+
+            regraspTran = getTransformFromPoseMat(object_in_base_link.dot(graspPos))
+          
+            # publish the next regrasp pos in the tf for debug
+            tf_helper.pubTransform("regrasp pos", regraspTran)
             
-            # place the object down to the table
-            robot.switchController('my_cartesian_motion_controller', 'arm_controller')
+            # move to regrasp pose
             while not rospy.is_shutdown():
-              if robot.moveToFrame(getTransformFromPoseMat(placing_grasp), True):
+              if robot.moveToFrame(regraspTran, True):
                 break
               rospy.sleep(0.05)
-            robot.switchController('arm_controller', 'my_cartesian_motion_controller')
-
-            robot.detachManipulatedObject(object_name + "_collision")
-            # open the gripper according to the next grasp width
-            robot.setGripperWidth(candidate_jawwidth +.01)
-            #Convert from object frame to torso frame
-            object_in_base_link = manipulation_position.dot(real_placement)
-
-            robot.switchController('my_cartesian_motion_controller', 'arm_controller')
-            for graspPos in dmgresult:
-
-              regraspTran = getTransformFromPoseMat(object_in_base_link.dot(graspPos))
-            
-              # publish the next regrasp pos in the tf for debug
-              tf_helper.pubTransform("regrasp pos", regraspTran)
-              
-              # move to regrasp pose
-              while not rospy.is_shutdown():
-                if robot.moveToFrame(regraspTran, True):
-                  break
-                rospy.sleep(0.05)
 
             robot.switchController('arm_controller', 'my_cartesian_motion_controller')
             print("Finished regrasp with DMG")
 
-        robot.setGripperWidth(candidate_jawwidth - 0.02)
+        #robot.setGripperWidth(candidate_jawwidth)
+        robot.closeGripper()
         robot.attachManipulatedObject(object_name + "_collision")
         pickup(tf_helper)
         init_graspPose = nextgrasp_candidate
@@ -371,8 +377,8 @@ if __name__=='__main__':
 
   # object_name = "book"
   # object_tf_name = "/Book"
-  object_name = "cup"
-  object_tf_name = "/Cup"
+  object_name = "book"
+  object_tf_name = "/book"
 
 
   base = pandactrl.World(camp=[700,300,1400], lookatp=[0,0,0])

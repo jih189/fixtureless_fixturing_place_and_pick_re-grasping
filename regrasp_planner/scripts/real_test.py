@@ -64,31 +64,34 @@ def detect_table_and_placement(tf_helper, robot):
 
 # detectino_object will detect the object and return the object pose
 # return: issuccess, poseMat_of_object
-def detection_object(tf_helper, robot, object_name, object_tf_name):
+def detection_object(tf_helper, robot, object_name, isSim):
 
-  # call the pose estimation node
-  # get the object searcher trigger to control the tracker
-  rospy.wait_for_service('searchObject')
-  objectSearcherTrigger = rospy.ServiceProxy('searchObject', SearchObject)
+  if not isSim:
+    # call the pose estimation node
+    # get the object searcher trigger to control the tracker
+    rospy.wait_for_service('searchObject')
+    objectSearcherTrigger = rospy.ServiceProxy('searchObject', SearchObject)
 
-  ## launch the tracker
-  objectSearcherTrigger(True, 1, Pose())
+    ## launch the tracker
+    objectSearcherTrigger(True, 1, Pose())
 
-  try:
-      # add the object to the moveit
+    try:
+        # add the object to the moveit
+        target_transform = tf_helper.getTransform('/base_link', '/' + object_name)
+        robot.addCollisionObject(object_name + "_collision", target_transform, "objects/" + object_name + ".stl")
+    except Exception as e:# if failure, then return False
+        objectSearcherTrigger(False, 0, Pose())
+        print e
+        return False, None
+    
+    objectSearcherTrigger(False, 0, Pose())
+  else:
+    try:
       target_transform = tf_helper.getTransform('/base_link', '/' + object_name)
       robot.addCollisionObject(object_name + "_collision", target_transform, "objects/" + object_name + ".stl")
-  except Exception as e:
-      objectSearcherTrigger(False, 0, Pose())
-      print e
-      return False, None
-  
-  objectSearcherTrigger(False, 0, Pose())
-  # if failure, then return False
-
-  # add the object into the moveit
-  # tran_base_Obj = tf_helper.getTransform('/base_link', object_tf_name) #return tuple (trans,rot) of parent_lin to child_link
-  # robot.addCollisionObject(object_name + "_collision", tran_base_Obj, 'objects/' + object_name + '.stl')
+    except Exception as e:# if failure, then return False
+        print e
+        return False, None
 
   return True, target_transform
 
@@ -106,13 +109,12 @@ def grasp_object( planner, object_pose, gripper_pos=None, object_name = None):
         # we have to try all grasps
         gripper_pos_list = planner.getAllGrasps()
 
-
     print "Going through this many grasp pose: " ,len(gripper_pos_list)
     for i, (obj_grasp_pos, jaw_width) in enumerate(gripper_pos_list):
 
         obj_grasp_trans_obframe = getTransformFromPoseMat(obj_grasp_pos) #Tranfrom gripper posmatx to (trans,rot)
         # obj_grasp_trans_obframe = transformProduct(obj_grasp_trans_obframe, [[0.01,0,0],[0,0,0,1]]) # try to move the gripper forward little
-        obj_pre_grasp_trans =  transformProduct(obj_grasp_trans_obframe, [[-0.065,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
+        obj_pre_grasp_trans =  transformProduct(obj_grasp_trans_obframe, [[-0.07,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
         obj_pre_grasp_trans = transformProduct(tran_base_object, obj_pre_grasp_trans)
         obj_grasp_trans = transformProduct(tran_base_object, obj_grasp_trans_obframe)
 
@@ -120,13 +122,13 @@ def grasp_object( planner, object_pose, gripper_pos=None, object_name = None):
         grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_grasp_trans, 50)
 
         if grasp_ik_result == None:
-            # print 'check on grasp ', i
+            print 'check on grasp ', i
             continue
 
         pre_grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_pre_grasp_trans, 50)
 
         if pre_grasp_ik_result == None:
-            # print 'check on grasp ', i
+            print 'check on grasp ', i
             continue
         
         return obj_pre_grasp_trans, pre_grasp_ik_result, obj_grasp_trans, jaw_width, obj_grasp_trans_obframe
@@ -304,7 +306,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
       table_buffer = 0.01
       placing_grasp = getTransformFromPoseMat(placing_grasp)
       placing_grasp[0][2] += table_buffer
-      placing_grasp = getMatrixFromQuaternionAndTrans(placing_grasp)
+      placing_grasp = getMatrixFromQuaternionAndTrans(placing_grasp[1],placing_grasp[0])
 
       # need to attach the object in hand properly
       robot.reattachManipulatedObject(object_name + "_collision", getTransformFromPoseMat(np.linalg.inv(init_graspPose)))
@@ -334,11 +336,11 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
 
         # check the type of current placement
         if currentplacementtype == 0: # current placement is table
-          #robot.openGripper()
+          
 
           # place the object down to the table #TODO: for unstable placement, we should plan the trajectory 
           placedown(placing_grasp)
-
+          robot.openGripper()
 
           robot.detachManipulatedObject(object_name + "_collision")
           
@@ -360,6 +362,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
 
             robot.detachManipulatedObject(object_name + "_collision")
             # open the gripper according to the next grasp width
+            print "candidate jawwidth = ", candidate_jawwidth +.01
             robot.setGripperWidth(candidate_jawwidth +.01)
             #Convert from object frame to torso frame
             object_in_base_link = manipulation_position.dot(real_placement)
@@ -401,20 +404,20 @@ def move_arm_to_startPos(robot):
   pass
 
 if __name__=='__main__':
-  rospy.init_node('test_node')
-  robot = Fetch_Robot(sim=False)
-  tf_helper = TF_Helper()
 
-  # object_name = "book"
-  # object_tf_name = "/Book"
-  object_name = "cup"
-  object_tf_name = "/Cup"
+  # object_name = "cup"
+  object_name = "book"
+  isSim = True
+
+
+  rospy.init_node('test_node')
+  robot = Fetch_Robot(sim=isSim)
+  tf_helper = TF_Helper()
 
   # answer = raw_input("Move robot to start positon: is area clear? Press 'Y' ")
   # if answer == 'Y':
   #   move_arm_to_startPos(robot)
   
-
   base = pandactrl.World(camp=[700,300,1400], lookatp=[0,0,0])
   this_dir, this_filename = os.path.split(__file__)   
   objpath = os.path.join(os.path.split(this_dir)[0], "objects", object_name + ".stl") 
@@ -431,14 +434,16 @@ if __name__=='__main__':
     print "---FAILURE---"
     exit()
 
-  result, object_pose_in_base_link = detection_object(tf_helper, robot, object_name=object_name, object_tf_name=object_tf_name)
+  result, object_pose_in_base_link = detection_object(tf_helper, robot, object_name=object_name, isSim=isSim)
   print "object pose estimation"
   if result:
     print "---SUCCESS---"
   else:
     print "---FAILURE---"
     exit()
+  
   raw_input("go grasp object")
+
   result, init_grasp_transform_in_object_frame, init_jawwidth = grasp_object(planner, object_pose_in_base_link, object_name=object_name)
   print "grasp object"
   if result:

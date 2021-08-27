@@ -204,6 +204,7 @@ class Fetch_Robot():
                 self.cartesian_motion_controller_publisher.publish(self.getTwistError())
                 
             transerror, rotationerror = self.getError()
+            # print "trans error ", transerror, " rotation error ", rotationerror
             if(transerror < self.transThreshold and rotationerror < self.rotThreshold):
                 break
 

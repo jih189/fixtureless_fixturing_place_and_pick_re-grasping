@@ -179,15 +179,16 @@ def resetEnv(clientID, arm, gripper, torso):
 
     # move table away
     moveObjectTo(clientID, "Table", [1.526, -1.3749, 0.3944], [0.5,0.5,0.5,-0.5]) # it was [-0.025, 0.5, 0.35]
-    moveObjectTo(clientID, "Cup", [0.7768, 2.093, 0.8338], [0.5, 0.5, 0.5, 0.5]) # it was [0.021, 0.463, 0.7775]
-    moveObjectTo(clientID, "Book", [0.65, 2.093, 0.8338], [0.5, 0.5, 0.5, 0.5])
+    moveObjectTo(clientID, "cup", [0.7768, 2.093, 0.8338], [0.5, 0.5, 0.5, 0.5]) # it was [0.021, 0.463, 0.7775]
+    moveObjectTo(clientID, "book", [0.65, 2.093, 0.8338], [0.5, 0.5, 0.5, 0.5])
     
     arm.reset()
     gripper.open()
 
     moveObjectTo(clientID, "Table", [0.8, 0.075, 0.3946], [0.5,0.5,0.5,-0.5]) # it was [-0.025, 0.5, 0.35]
-    moveObjectTo(clientID, "Cup", [0.7768, 0.093, 0.8538], [0.5,0.5, 0.5,0.5]) # it was [0.021, 0.463, 0.7775]
-    moveObjectTo(clientID, "Book", [0.45134, 0.315, 0.8], [0.0, 0.0, 0.7, 0.7]) 
+    moveObjectTo(clientID, "cup", [0.7768, 0.093, 0.8538], [0.5,0.5, 0.5,0.5]) # it was [0.021, 0.463, 0.7775]
+    moveObjectTo(clientID, "book", [0.7768, 0.093, 0.94], [0.5, 0.5, 0.5, 0.5]) 
+    # moveObjectTo(clientID, "Book", [0.45, 0.3277, 0.8], [0.5, 0.5, 0.5, 0.5]) 
 
     # gripper.close()
 

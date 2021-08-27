@@ -156,7 +156,7 @@ void publish_object_state(int* publish_rate){
 
     object_pose_transform.setOrigin(tf_trans);
     object_pose_transform.setRotation(tf_quat);
-    object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "cup"));
+    object_pose_transform_broad_caster.sendTransform(tf::StampedTransform(object_pose_transform, ros::Time::now(), "/head_camera_rgb_optical_frame", "book"));
   }
 }
 
@@ -250,7 +250,7 @@ int main(int argc, char **argv)
     pose_particles.reserve(30);
 
     // marker helper
-    MarkerHelper marker_helper(nh, "package://fetch_description/meshes/object/cup.obj");
+    MarkerHelper marker_helper(nh, "package://fetch_description/meshes/object/book.obj");
 
     bool isTracking = false;
 
