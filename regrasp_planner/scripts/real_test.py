@@ -303,7 +303,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
       real_placement = rotationInZ.dot(planner.getPlacementsById([currentplacementid])[0])
       placing_grasp = manipulation_position.dot(real_placement).dot(init_graspPose)
       # move to pre placing position
-      table_buffer = 0.01
+      table_buffer = 0.02
       placing_grasp = getTransformFromPoseMat(placing_grasp)
       placing_grasp[0][2] += table_buffer
       placing_grasp = getMatrixFromQuaternionAndTrans(placing_grasp[1],placing_grasp[0])
@@ -316,6 +316,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
         continue
 
       for nextgrasp_candidate_pair in grasps_between_placements[i]:
+        print "check"
         candidate_jawwidth = 0
         if type(nextgrasp_candidate_pair) == tuple:
           candidate_jawwidth = nextgrasp_candidate_pair[1] / 1000.0
@@ -331,13 +332,15 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
         # check whether the next grasp is feasible or not
         robot.reattachManipulatedObject(object_name + "_collision", getTransformFromPoseMat(np.linalg.inv(nextgrasp_candidate)))
         if not feasible(manipulation_position.dot(real_placement).dot(nextgrasp_candidate)):
+          robot.reattachManipulatedObject(object_name + "_collision", getTransformFromPoseMat(np.linalg.inv(init_graspPose)))
           continue
         robot.reattachManipulatedObject(object_name + "_collision", getTransformFromPoseMat(np.linalg.inv(init_graspPose)))
+
+        tf_helper.pubTransform("place_grasp", getTransformFromPoseMat(placing_grasp))
 
         # check the type of current placement
         if currentplacementtype == 0: # current placement is table
           
-
           # place the object down to the table #TODO: for unstable placement, we should plan the trajectory 
           placedown(placing_grasp)
           robot.openGripper()
@@ -362,8 +365,8 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
 
             robot.detachManipulatedObject(object_name + "_collision")
             # open the gripper according to the next grasp width
-            print "candidate jawwidth = ", candidate_jawwidth +.01
-            robot.setGripperWidth(candidate_jawwidth +.01)
+            print "candidate jawwidth = ", candidate_jawwidth
+            robot.setGripperWidth(candidate_jawwidth)
             #Convert from object frame to torso frame
             object_in_base_link = manipulation_position.dot(real_placement)
 
@@ -371,7 +374,8 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
             for graspPos in dmgresult:
 
               regraspTran = getTransformFromPoseMat(object_in_base_link.dot(graspPos))
-            
+              buffer = 0.02
+              regraspTran[0][2] += buffer
               # publish the next regrasp pos in the tf for debug
               tf_helper.pubTransform("regrasp pos", regraspTran)
               
@@ -490,6 +494,7 @@ if __name__=='__main__':
     print "---SUCCESS---"
   else:
     print "---FAILURE---"
+    robot.detachManipulatedObject(object_name + "_collision")
     exit()
 
   robot.detachManipulatedObject(object_name + "_collision")

@@ -181,6 +181,7 @@ class Fetch_Robot():
         else:
             goal = GripperCommandGoal()
             goal.command.position = float(pos)
+            goal.command.max_effort = 60
             self.gripper_client.send_goal_and_wait(goal)
 
     def openGripper(self):
