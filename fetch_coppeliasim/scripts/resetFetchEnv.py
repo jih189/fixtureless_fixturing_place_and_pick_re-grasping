@@ -80,7 +80,7 @@ class Arm:
 class Torso:
     def __init__(self):
         self.joint_names = ['torso_lift_joint']
-        self.joint_value = [0.2]
+        self.joint_value = [0.28]
         self.client = actionlib.SimpleActionClient("/torso_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
 
         rospy.loginfo('Waiting for joint trajectory action')    
@@ -186,8 +186,8 @@ def resetEnv(clientID, arm, gripper, torso):
     gripper.open()
 
     moveObjectTo(clientID, "Table", [0.8, 0.075, 0.3946], [0.5,0.5,0.5,-0.5]) # it was [-0.025, 0.5, 0.35]
-    moveObjectTo(clientID, "cup", [0.7768, 0.093, 0.8538], [0.5,0.5, 0.5,0.5]) # it was [0.021, 0.463, 0.7775]
-    moveObjectTo(clientID, "book", [0.7768, 0.093, 0.94], [0.5, 0.5, 0.5, 0.5]) 
+    moveObjectTo(clientID, "cup", [0.94, 0.093, 0.8538], [0.5,0.5, 0.5,0.5]) # it was [0.021, 0.463, 0.7775]
+    moveObjectTo(clientID, "book", [0.93, 0.093, 0.94], [0.5, 0.5, 0.5, 0.5]) 
     # moveObjectTo(clientID, "Book", [0.45, 0.3277, 0.8], [0.5, 0.5, 0.5, 0.5]) 
 
     # gripper.close()

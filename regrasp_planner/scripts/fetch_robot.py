@@ -337,6 +337,25 @@ class Fetch_Robot():
                 break
             second = rospy.get_time()
 
+    def attachTable(self, tablename):
+        touch_links = []
+        # need to add the links which are not belong to the group
+        touch_links.append("base_link")
+        touch_links.append("bellows_link")
+        touch_links.append("bellows_link2")
+        touch_links.append("shoulder_pan_link")
+        touch_links.append("torso_fixed_link")
+        touch_links.append("torso_lift_link")
+        self.scene.attach_mesh(self.basename, tablename, touch_links=touch_links)
+        start = rospy.get_time()
+        second = rospy.get_time()
+        while (second - start) < self.timeout and not rospy.is_shutdown():
+            attached_objects = self.scene.get_attached_objects([tablename])
+            if len(attached_objects.keys()) > 0:
+                break
+            second = rospy.get_time()
+
+
     def attachManipulatedObject(self, objectname):
 
         touch_links = self.robot.get_link_names(group=self.group_name)

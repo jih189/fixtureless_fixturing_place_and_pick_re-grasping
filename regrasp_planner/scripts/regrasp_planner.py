@@ -194,15 +194,19 @@ class RegripPlanner():
                     self.PlacementG.add_edge(*addededge, graspid = temp)
 
     def find_shortest_PlacementG_path(self):
-        path = nx.shortest_path(self.PlacementG,self.inital_grasp[0], self.end_grasp[0])
-        #remove end graps node and init grasp node in graph path.
-        #path.pop()
-        path.pop(0)
-        path_and_type = []
-        for p in path:
-            type = self.PlacementG.nodes[p]["stable"]
-            path_and_type.append((p,type))
-        return path_and_type
+        # path = nx.shortest_path(self.PlacementG, self.inital_grasp[0], self.end_grasp[0])
+        # this function will return all possible shortest path
+        paths = nx.all_shortest_paths(self.PlacementG, self.inital_grasp[0], self.end_grasp[0])
+        results = []
+        for path in paths:
+            #remove end graps node and init grasp node in graph path.
+            path.pop(0)
+            path_and_type = []
+            for p in path:
+                type = self.PlacementG.nodes[p]["stable"]
+                path_and_type.append((p,type))
+            results.append(path_and_type)
+        return results
 
     def get_placement_grasp_trajectory(self,path_and_type):
         path = path_and_type
