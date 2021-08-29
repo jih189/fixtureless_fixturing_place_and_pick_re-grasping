@@ -349,17 +349,11 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
         # and the candidate jawwidth should be in meter unit
 
         # check whether the next grasp is feasible or not
-        print "before reattach"
         robot.reattachManipulatedObject(object_name + "_collision", getTransformFromPoseMat(np.linalg.inv(nextgrasp_candidate)))
-        print "after reattach"
         if not feasible(manipulation_position.dot(real_placement).dot(nextgrasp_candidate)):
-          print "fail reattach back"
           robot.reattachManipulatedObject(object_name + "_collision", getTransformFromPoseMat(np.linalg.inv(init_graspPose)))
-          print "fail after reattach back"
           continue
-        print "success reattach back"
         robot.reattachManipulatedObject(object_name + "_collision", getTransformFromPoseMat(np.linalg.inv(init_graspPose)))
-        print "success after reattach back"
 
         # check the type of current placement
         if currentplacementtype == 0: # current placement is table
@@ -379,13 +373,10 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
           tf_helper.pubTransform("place_grasp", getTransformFromPoseMat(placing_grasp))
           tf_helper.pubTransform("pick_grasp", getTransformFromPoseMat(manipulation_position.dot(real_placement).dot(nextgrasp_candidate)))
           # get a trajectory of regrasping pose in the object frame with numpy pose mat format
-          print "run dmg"
           dmgresult = dmgplanner.getTrajectory(init_graspPose, nextgrasp_candidate, candidate_jawwidth, real_placement, base)
           if dmgresult == None:
-            print "get no dmg result"
             continue
           else:
-            print "get a result from dmg"
             placedown(placing_grasp)
 
             # move the gripper according to the dmg result
@@ -409,7 +400,6 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
                 rospy.sleep(0.05)
 
             robot.switchController('arm_controller', 'my_cartesian_motion_controller')
-            print("Finished regrasp with DMG")
 
         robot.closeGripper()
         robot.attachManipulatedObject(object_name + "_collision")
