@@ -27,7 +27,7 @@ class ParticleFilter{
     void sampling(const Eigen::Matrix4f& input){
       poses.clear();
       for(int i = 0; i < numberOfParticles; i++){
-        poses.push_back(propagate(input, 0.1, 0.01));
+        poses.push_back(propagate(input, 0.5, 0.01));
       }
     }
 

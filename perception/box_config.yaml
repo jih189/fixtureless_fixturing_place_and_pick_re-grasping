@@ -22,11 +22,11 @@ depth_path: /home/lambda/icra20-hand-object-pose/example/depth7.png
 palm_in_baselink: /home/lambda/icra20-hand-object-pose/example/palm_in_base7.txt
 leftarm_in_base: /home/lambda/icra20-hand-object-pose/example/arm_left_link_7_t_7.txt
 
-model_name: book
-object_model_path: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/object/book.ply
-#object_mesh_path: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/object/book.obj
-object_mesh_path: package://in_hand_manipulation/scripts/objects/book.stl
-ppf_path: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/object/ppf_book
+model_name: box
+object_model_path: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/object/box.ply
+#object_mesh_path: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/object/box.obj
+object_mesh_path: package://in_hand_manipulation/scripts/objects/box.stl
+ppf_path: /home/lambda/catkin_ws/src/fetch_ros/fetch_description/meshes/object/ppf_box
 
 #For Simulation data
 cam_in_world: /home/lambda/icra20-hand-object-pose/simulation_data/cuboid_whitehand/000626/cam_in_world_pose.txt
@@ -34,7 +34,7 @@ handbase_in_world: /home/lambda/icra20-hand-object-pose/simulation_data/cuboid_w
 
 
 object_symmetry:   # 0 means complete symmetric, 360 means not symmetric
-  book:
+  box:
     x: 180
     y: 180
     z: 180

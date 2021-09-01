@@ -6,6 +6,119 @@ import math
 from panda3d.core import Mat4
 from scipy.spatial.transform import Rotation as R
 
+def unit_vector(data, axis=None, out=None):
+    if out is None:
+        data = np.array(data, dtype=np.float64, copy=True)
+        if data.ndim == 1:
+            data /= math.sqrt(np.dot(data, data))
+            return data
+    else:
+        if out is not data:
+            out[:] = np.array(data, copy=False)
+        data = out
+    length = np.atleast_1d(np.sum(data*data, axis))
+    np.sqrt(length, length)
+    if axis is not None:
+        length = np.expand_dims(length, axis)
+    data /= length
+    if out is None:
+        return data
+ 
+
+def rotation_matrix(angle, direction, point=None):
+    sina = math.sin(angle)
+    cosa = math.cos(angle)
+    direction = unit_vector(direction[:3])
+    # rotation matrix around unit vector
+    R = np.diag([cosa, cosa, cosa])
+    R += np.outer(direction, direction) * (1.0 - cosa)
+    direction *= sina
+    R += np.array([[ 0.0,         -direction[2],  direction[1]],
+                      [ direction[2], 0.0,          -direction[0]],
+                      [-direction[1], direction[0],  0.0]])
+    M = np.identity(4)
+    M[:3, :3] = R
+    if point is not None:
+        # rotation not around origin
+        point = np.array(point[:3], dtype=np.float64, copy=False)
+        M[:3, 3] = point - np.dot(R, point)
+    return M
+
+
+def unitize(points, check_valid=False):
+    points = np.asanyarray(points)
+    axis   = len(points.shape) - 1
+    length = np.sum(points ** 2, axis=axis) ** .5
+    if check_valid:
+        valid = np.greater(length, 1e-12)
+        if axis == 1:
+            unit_vectors = (points[valid].T / length[valid]).T
+        elif len(points.shape) == 1 and valid:
+            unit_vectors = points / length
+        else:
+            unit_vectors = np.array([])
+        return unit_vectors, valid
+    else:
+        unit_vectors = (points.T / length).T
+    return unit_vectors
+
+def align_vectors(vector_start, vector_end, return_angle=False):
+
+    # the following code is added by weiwei on 07212017
+    # to correct the problems of same vectors and inverse vectors
+    if np.array_equal(vector_start, vector_end):
+        T = np.eye(4)
+        angle = 0.0
+        if return_angle:
+            return T, angle
+        return T
+    if np.array_equal(-vector_start, vector_end):
+        T = np.eye(4)
+        T[:3, 2] *= -1.0
+        T[:3, 1] *= -1.0
+        angle = np.pi
+        if return_angle:
+            return T, angle
+        return T
+
+    vector_start = unitize(vector_start)
+    vector_end   = unitize(vector_end)
+    cross        = np.cross(vector_start, vector_end)
+    # we clip the norm to 1, as otherwise floating point bs
+    # can cause the arcsin to error
+    norm         = np.clip(np.linalg.norm(cross), -1.0, 1.0)
+    direction    = np.sign(np.dot(vector_start, vector_end))
+
+    if norm < 1e-12:
+        # if the norm is zero, the vectors are the same
+        # and no rotation is needed
+        T       = np.eye(4)
+        T[0:3] *= direction
+    else:
+        angle = np.arcsin(norm)
+        if direction < 0:
+            angle = np.pi - angle
+        T = rotation_matrix(angle, cross)
+
+    check = np.dot(T[:3,:3], vector_start) - vector_end
+    if not np.allclose(check, 0.0, atol=1e-4):
+        raise ValueError('Vectors unaligned!')
+
+    if return_angle:
+        return T, angle
+    return T
+
+def pointDown(pose):
+    result = np.eye(4)
+    result[:3,2] = pose[:3,2]
+    result[2,2] = 0.0
+    result[:3,2] = result[:3,2] / np.linalg.norm(result[:3,2])
+    result[:3,0] = np.array([0,0,-1])
+    result[:3,1] = -np.cross(result[:3,0], result[:3,2])
+    return result
+
+
+
 def isRotationMatrix(M):
     # check if the matrix is rotation matrix or not
     tag = False

@@ -68,7 +68,8 @@ class MarkerHelper{
         marker.id = pn + headerNum;
 
         marker.type = visualization_msgs::Marker::MESH_RESOURCE;
-        marker.mesh_resource = _mesh_source_path; //"package://regrasp_planner/scripts/objects/cuboid.stl";
+        marker.mesh_resource = _mesh_source_path; //cat"package://regrasp_planner/scripts/objects/cuboid.stl";
+        // marker.mesh_resource = "package://regrasp_planner/scripts/objects/book.stl";
 
         marker.action = visualization_msgs::Marker::ADD;
 
@@ -87,9 +88,9 @@ class MarkerHelper{
         marker.scale.y = 1.0;
         marker.scale.z = 1.0;
 
-        // marker.scale.x = 0.001;
-        // marker.scale.y = 0.001;
-        // marker.scale.z = 0.001;
+        marker.scale.x = 0.001;
+        marker.scale.y = 0.001;
+        marker.scale.z = 0.001;
 
         marker.color.a = 0.2 + 0.8 * (weights[pn] / height_weight);
         marker.color.r = 0.0;

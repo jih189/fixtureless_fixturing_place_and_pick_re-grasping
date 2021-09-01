@@ -56,7 +56,7 @@ def showPlacePos(rotation, trans):
    marker.scale.x = 0.001
    marker.scale.y = 0.001
    marker.scale.z = 0.001
-   marker.mesh_resource = "package://regrasp_planner/scripts/objects/cuboid.stl"
+   marker.mesh_resource = "package://in_hand_manipulation/scripts/objects/cuboid.stl"
    marker.color.a = 1.0
    marker.color.r = 0.0
    marker.color.g = 1.0

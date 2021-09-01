@@ -90,8 +90,8 @@ class Fetch_Robot():
         self.targetFrame.header.frame_id = self.armbasename
         self.thread = None
 
-        self.transThreshold = 0.003
-        self.rotThreshold = 0.01
+        self.transThreshold = 0.005
+        self.rotThreshold = 0.03
 
         # used to get current robot state
         self.tf_listener = tf.TransformListener()
@@ -181,7 +181,7 @@ class Fetch_Robot():
         else:
             goal = GripperCommandGoal()
             goal.command.position = float(pos)
-            goal.command.max_effort = 60
+            goal.command.max_effort = 100
             self.gripper_client.send_goal_and_wait(goal)
 
     def openGripper(self):
@@ -494,6 +494,48 @@ class Fetch_Robot():
         plan = self.group.go(wait=True)
         self.group.stop()
         self.group.clear_pose_targets()
+
+    def planto_pose_with_constraints(self, pose):
+        trans, rotation = pose
+        current_endeffector = self.group.get_end_effector_link()
+        self.group.set_end_effector_link("gripper_link")
+        pose_goal = Pose()
+        pose_goal.orientation.x = rotation[0]
+        pose_goal.orientation.y = rotation[1]
+        pose_goal.orientation.z = rotation[2]
+        pose_goal.orientation.w = rotation[3]
+        pose_goal.position.x = trans[0]
+        pose_goal.position.y = trans[1]
+        pose_goal.position.z = trans[2]
+        self.group.set_pose_target(pose_goal)
+
+        start_pose = self.group.get_current_pose()
+
+        path_contraints = moveit_msgs.msg.Constraints()
+        path_contraints.name = "keep gripper horizontal"
+        orientation_c = moveit_msgs.msg.OrientationConstraint()
+        orientation_c.header = start_pose.header
+        orientation_c.link_name = self.group.get_end_effector_link()
+        orientation_c.orientation.w = 1.0
+        orientation_c.absolute_x_axis_tolerance = 3.14
+        orientation_c.absolute_y_axis_tolerance = 3.14
+        orientation_c.absolute_z_axis_tolerance = 2.0
+        orientation_c.weight = 0.2
+
+        path_contraints.orientation_constraints.append(orientation_c)
+        self.group.set_path_constraints(path_contraints)
+        original_planning_time = self.group.get_planning_time()
+        # print "original planning time ", original_planning_time
+        self.group.set_planning_time(10.0)
+        
+        plan = self.group.plan()
+        self.group.set_planning_time(original_planning_time)
+
+        self.group.clear_pose_targets()
+        self.group.clear_path_constraints()
+        self.group.set_end_effector_link(current_endeffector)
+        
+        return plan
 
     def planto_pose(self, pose):
         trans, rotation = pose

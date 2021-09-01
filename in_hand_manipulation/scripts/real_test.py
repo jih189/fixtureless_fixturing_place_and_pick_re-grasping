@@ -4,8 +4,9 @@ import rospy
 from fetch_robot import Fetch_Robot
 from geometry_msgs.msg import Pose
 from panda3d.bullet import BulletDebugNode
-from tf_util import PosMat_t_PandaPosMax, TF_Helper, transformProduct, getMatrixFromQuaternionAndTrans, getTransformFromPoseMat, PandaPosMax_t_PosMat
+from tf_util import PosMat_t_PandaPosMax, TF_Helper, transformProduct, getMatrixFromQuaternionAndTrans, getTransformFromPoseMat, PandaPosMax_t_PosMat, align_vectors, pointDown
 from rail_segmentation.srv import SearchTable
+from in_hand_manipulation.srv import StopOctoMap
 import pandaplotutils.pandactrl as pandactrl
 from manipulation.grip.fetch_gripper import fetch_grippernm
 from regrasp_planner import RegripPlanner
@@ -50,7 +51,7 @@ def detect_table_and_placement(tf_helper, robot):
 
   robot.addCollisionTable("table", tableresult.center.x, tableresult.center.y, tableresult.center.z, \
             table_quaternion[0], table_quaternion[1], table_quaternion[2], table_quaternion[3], \
-            tableresult.width * 3, tableresult.depth * 3, 0.001)
+            tableresult.width * 2, tableresult.depth * 3, 0.001)
   # robot.attachTable("table")
   robot.addCollisionTable("table_base", tableresult.center.x, tableresult.center.y, tableresult.center.z - 0.3, \
           table_quaternion[0], table_quaternion[1], table_quaternion[2], table_quaternion[3], \
@@ -76,6 +77,8 @@ def detection_object(tf_helper, robot, object_name, isSim):
     ## launch the tracker
     objectSearcherTrigger(True, 1, Pose())
 
+    raw_input("running pose estimation")
+
     try:
         # add the object to the moveit
         target_transform = tf_helper.getTransform('/base_link', '/' + object_name)
@@ -93,6 +96,15 @@ def detection_object(tf_helper, robot, object_name, isSim):
     except Exception as e:# if failure, then return False
         print e
         return False, None
+
+  # stop updating octo map
+  rospy.wait_for_service('stop_octo_map')
+  try:
+    octoclient = rospy.ServiceProxy('stop_octo_map', StopOctoMap)
+    octoclient()
+  except rospy.ServiceException as e:
+    print ("Fail to stop octo map controller: %s"%e)
+    return False, None
 
   return True, target_transform
 
@@ -120,7 +132,7 @@ def grasp_object( planner, object_pose, given_grasps=None, object_name = None):
         obj_grasp_trans = transformProduct(tran_base_object, obj_grasp_trans_obframe)
 
         # need to ensure both grasp and pre-grasp is valid for robot
-        grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_grasp_trans, 50)
+        grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_grasp_trans, 100)
 
         if grasp_ik_result == None:
             print 'check on grasp ', i
@@ -223,12 +235,32 @@ def getTargetGrasps(gdb, object_name):
 
     return True, target_grasps
 
+def align_gripper(tf_helper, robot, manipulation_pos, height):
+  currenttransform = tf_helper.getTransform('/base_link', '/gripper_link')
+  currentpose = getMatrixFromQuaternionAndTrans(currenttransform[1], currenttransform[0])
+  # align_pose = align_vectors(currentpose[:3, 0], [0,0,-1])
+  align_pose = pointDown(currentpose)
+  align_pose[0,3] = manipulation_pos[0][0][0]
+  align_pose[1,3] = manipulation_pos[0][0][1]
+  align_pose[2,3] = manipulation_pos[0][0][2] + height
+  align_trans = getTransformFromPoseMat(align_pose)
+  tf_helper.pubTransform("first_move", align_trans)
+
+  robot.switchController('my_cartesian_motion_controller', 'arm_controller')
+  while not rospy.is_shutdown():
+    if robot.moveToFrame(align_trans, True):
+      break
+    rospy.sleep(0.05)
+  robot.switchController('arm_controller', 'my_cartesian_motion_controller')
+
+  return True
+
 # pickup is the action to move the gripper up in the base_link frame
-def pickup(tf_helper):
+def pickup(tf_helper, height):
   """Pick up object"""
   
   target_transform = tf_helper.getTransform('/base_link', '/gripper_link')
-  target_transform[0][2] += 0.06
+  target_transform[0][2] += height
 
   robot.switchController('my_cartesian_motion_controller', 'arm_controller')
 
@@ -243,14 +275,19 @@ def pickup(tf_helper):
 
 def placedown(placing_grasp):
   # move to pre placing position
-  buffer = 0.02
+  buffer = 0.03
   pre_placing_grasp = getTransformFromPoseMat(placing_grasp)
   pre_placing_grasp[0][2] += buffer
 
+  # need to set path contraints too
   placing_plan = robot.planto_pose(pre_placing_grasp)
+  if not placing_plan.joint_trajectory.points:
+    print "found no plan to place down"
+    return False
+
   robot.display_trajectory(placing_plan)
   print("Placing object down")
-  # raw_input("ready to place") 
+  raw_input("move to pre-place") 
   robot.execute_plan(placing_plan)
   
   # place the object down to the table
@@ -260,6 +297,34 @@ def placedown(placing_grasp):
       break
     rospy.sleep(0.05)
   robot.switchController('arm_controller', 'my_cartesian_motion_controller')
+  return True
+
+def placedown_with_constraints(placing_grasp):
+  # move to pre placing position
+  buffer = 0.03
+  pre_placing_grasp = getTransformFromPoseMat(placing_grasp)
+  pre_placing_grasp[0][2] += buffer
+
+  # need to set path contraints too
+  placing_plan = robot.planto_pose_with_constraints(pre_placing_grasp)
+  # placing_plan = robot.planto_pose(pre_placing_grasp)
+  if not placing_plan.joint_trajectory.points:
+    print "found no plan to place down"
+    return False
+
+  robot.display_trajectory(placing_plan)
+  print("Placing object down")
+  raw_input("move to pre-place") 
+  robot.execute_plan(placing_plan)
+  
+  # place the object down to the table
+  robot.switchController('my_cartesian_motion_controller', 'arm_controller')
+  while not rospy.is_shutdown():
+    if robot.moveToFrame(getTransformFromPoseMat(placing_grasp), True):
+      break
+    rospy.sleep(0.05)
+  robot.switchController('arm_controller', 'my_cartesian_motion_controller')
+  return True
 
 # regrasping will regrasp the object on the table
 # input: list of possible manipulating place on the table and current object pose in the hand
@@ -270,14 +335,14 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
   dmgplanner.loadDB()
 
   # have a buffer on the manipulation position
-  manipulation_position_list[0][0][2] += 0.001
+  manipulation_position_list[0][0][2] += 0.005
 
   # get the manipulation position in pose mat format in the base link frame
   manipulation_position = getMatrixFromQuaternionAndTrans(manipulation_position_list[0][1], manipulation_position_list[0][0])
 
   # input pose should be numpy format in the base_link
   def feasible(inputpose):
-    place_ik_result = robot.solve_ik_sollision_free_in_base(getTransformFromPoseMat(inputpose),50)
+    place_ik_result = robot.solve_ik_sollision_free_in_base(getTransformFromPoseMat(inputpose),100)
 
     if place_ik_result != None:
       return True
@@ -303,7 +368,13 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
     print e
     return False, None
 
-  path = paths[0]
+  print "find following paths for regrasping"
+  for idx, p in enumerate(paths):
+    print idx, p
+
+  selected_i = input("please select the path to execute\n")
+
+  path = paths[selected_i]
 
   # get the common grasps between placements on the path
   grasps_between_placements = planner.get_placement_grasp_trajectory(path)
@@ -377,12 +448,13 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
           if dmgresult == None:
             continue
           else:
-            placedown(placing_grasp)
+            if not placedown(placing_grasp):
+              continue
 
             # move the gripper according to the dmg result
             robot.detachManipulatedObject(object_name + "_collision")
             # open the gripper according to the next grasp width
-            robot.setGripperWidth(candidate_jawwidth)
+            robot.setGripperWidth(candidate_jawwidth - 0.003)
             #Convert from object frame to torso frame
             object_in_base_link = manipulation_position.dot(real_placement)
 
@@ -403,7 +475,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
 
         robot.closeGripper()
         robot.attachManipulatedObject(object_name + "_collision")
-        pickup(tf_helper)
+        pickup(tf_helper, 0.1)
         init_graspPose = nextgrasp_candidate
         foundsolution = True
         break
@@ -422,11 +494,13 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
 def move_arm_to_startPos(robot):
   pass
 
+
 if __name__=='__main__':
 
   # object_name = "cup"
-  object_name = "book"
-  isSim = True
+  # object_name = "book"
+  object_name = "box"
+  isSim = False
 
 
   rospy.init_node('test_node')
@@ -456,6 +530,8 @@ if __name__=='__main__':
   else:
     print "---FAILURE---"
     exit()
+
+  exit()
   
   raw_input("go grasp object")
 
@@ -478,7 +554,7 @@ if __name__=='__main__':
   
   raw_input("Ready to pick up object?")
   
-  result = pickup(tf_helper)
+  result = pickup(tf_helper, 0.35)
   print "pick up object"
   if result:
     print "---SUCCESS---"
@@ -486,6 +562,15 @@ if __name__=='__main__':
     print "---FAILURE---"
     exit()
 
+  # need to move to pre-place-plan-position
+  result = align_gripper(tf_helper, robot, manipulation_trans_on_table, 0.35)
+  print "align the gripper down"
+  if result:
+    print "---SUCCESS---"
+  else:
+    print "---FAILURE---"
+    exit()
+  
 
   '''
   result, object_pose_in_hand = in_hand_pose_estimation(tf_helper, robot, init_grasp_transform_in_object_frame)

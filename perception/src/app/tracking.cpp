@@ -388,7 +388,7 @@ int main(int argc, char **argv)
   ros::Publisher table_pub = nh.advertise<PointCloud> ("table_debug", 1);
 
   // marker helper
-  MarkerHelper marker_helper(nh, "package://regrasp_planner/scripts/objects/cuboid.stl");
+  MarkerHelper marker_helper(nh, "package://in_hand_manipulation/scripts/objects/cuboid.stl");
 
   // estimated pose
   ros::Publisher predicted_object_pointcloud_pub = nh.advertise<PointCloudSurfel> ("predicted_object", 1);

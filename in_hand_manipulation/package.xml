@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>regrasp_planner</name>
+  <name>in_hand_manipulation</name>
   <version>0.0.0</version>
-  <description>The regrasp_planner package</description>
+  <description>The in_hand_manipulation package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
@@ -19,7 +19,7 @@
   <!-- Url tags are optional, but multiple are allowed, one per tag -->
   <!-- Optional attribute type can be: website, bugtracker, or repository -->
   <!-- Example: -->
-  <!-- <url type="website">http://wiki.ros.org/regrasp_planner</url> -->
+  <!-- <url type="website">http://wiki.ros.org/in_hand_manipulation</url> -->
 
 
   <!-- Author tags are optional, multiple are allowed, one per tag -->
@@ -52,12 +52,23 @@
   <build_depend>roscpp</build_depend>
   <build_depend>rospy</build_depend>
   <build_depend>std_msgs</build_depend>
+  <build_depend>std_srvs</build_depend>
+  <build_depend>pcl_ros</build_depend>
+  <build_depend>roslib</build_depend>
+  <build_depend>pcl_conversions</build_depend>
+  <build_depend>message_generation</build_depend>
+  <build_depend>geometry_msgs</build_depend>
   <build_export_depend>roscpp</build_export_depend>
   <build_export_depend>rospy</build_export_depend>
   <build_export_depend>std_msgs</build_export_depend>
   <exec_depend>roscpp</exec_depend>
   <exec_depend>rospy</exec_depend>
+  <exec_depend>roslib</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>pcl_ros</exec_depend>
+  <exec_depend>pcl_conversions</exec_depend>
+  <exec_depend>message_runtime</exec_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

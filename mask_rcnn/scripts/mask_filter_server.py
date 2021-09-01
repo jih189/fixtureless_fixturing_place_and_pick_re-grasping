@@ -22,13 +22,13 @@ class object_segmentation_server:
         self.server = rospy.Service("object_filter", Object_segmentation, self.image_filter)
 
         # initialize the model
-        self.model = get_model_instance_segmentation(4)
+        self.model = get_model_instance_segmentation(7)
 
         # set the computation device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         # load the modle on to the computation device and set to eval mode
         self.model.to(self.device).eval()
-        model_path = os.path.dirname(os.path.realpath(__file__)) + "/result/model_maybe.pth"
+        model_path = os.path.dirname(os.path.realpath(__file__)) + "/result/model_best.pth"
         checkpoint = torch.load(model_path, map_location='cpu')
         self.model.load_state_dict(checkpoint['model'])
 

@@ -49,7 +49,7 @@ class RegripPlanner():
         self.bulletworld.attachRigidBody(self.planebullnode)
 
         self.bulletworldhplowest = BulletWorld()
-        self.planebullnode1 = cd.genCollisionPlane(offset=25)
+        self.planebullnode1 = cd.genCollisionPlane(offset=35)
         self.bulletworldhplowest.attachRigidBody(self.planebullnode1)
 
         self.startnodeids = None
