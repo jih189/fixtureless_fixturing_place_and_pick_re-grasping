@@ -68,7 +68,7 @@ class RegripPlanner():
         self.PlacementG.add_node("int_g", stable=-1)
 
         self.end_grasp = ("end_g", -1)
-        self.PlacementG.add_node("end_g", stable=-1)
+        self.PlacementG.add_node("end_g", stable=-2)
 
 
     def __loadFreeAirGrip(self):
@@ -157,7 +157,7 @@ class RegripPlanner():
                 else: # when placement is unstable
                     p1 = self.getPointFromPose(startrotmat4 * self.tpsmat4s[p], [-20, 50, 0])
                     p2 = self.getPointFromPose(startrotmat4 * self.tpsmat4s[p], [-20, -50, 0])
-                    if abs(p1[2] - p2[2]) < 5:
+                    if abs(p1[2] - p2[2]) < 15:
                         self.PlacementG.add_edge('int_g', self.placementid[p])
 
     # goal grasp is in Panda format, and goal handwidth is not in meter unit
@@ -172,7 +172,7 @@ class RegripPlanner():
             if self.placementtype[p] != 0: # if placement is not stable, then check whether the gripper is perpendicular to the table
                 p1 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [-20, 50, 0])
                 p2 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [-20, -50, 0])
-                if abs(p1[2] - p2[2]) >= 5:
+                if abs(p1[2] - p2[2]) >= 10:
                     continue
 
             # if the hand does not hit the ground, then this placement can connect to the goal node

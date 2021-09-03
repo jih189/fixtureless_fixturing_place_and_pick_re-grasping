@@ -550,8 +550,12 @@ class Fetch_Robot():
         pose_goal.position.y = trans[1]
         pose_goal.position.z = trans[2]
         self.group.set_pose_target(pose_goal)
+
+        original_planning_time = self.group.get_planning_time()
+        self.group.set_planning_time(20.0)
         
         plan = self.group.plan()
+        self.group.set_planning_time(original_planning_time)
         self.group.clear_pose_targets()
         self.group.set_end_effector_link(current_endeffector)
         return plan
