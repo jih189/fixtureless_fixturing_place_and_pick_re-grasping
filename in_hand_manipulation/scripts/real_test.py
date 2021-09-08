@@ -19,6 +19,7 @@ from scipy.spatial.transform import Rotation as R
 import pandaplotutils.pandageom as pandageom
 import time
 from icra20_manipulation_pose.srv import SearchObject
+from scipy.special import softmax
 
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -97,14 +98,15 @@ def detection_object(tf_helper, robot, object_name, isSim):
         print e
         return False, None
 
-  # stop updating octo map
-  rospy.wait_for_service('stop_octo_map')
-  try:
-    octoclient = rospy.ServiceProxy('stop_octo_map', StopOctoMap)
-    octoclient()
-  except rospy.ServiceException as e:
-    print ("Fail to stop octo map controller: %s"%e)
-    return False, None
+  if not isSim:
+    # stop updating octo map
+    rospy.wait_for_service('stop_octo_map')
+    try:
+      octoclient = rospy.ServiceProxy('stop_octo_map', StopOctoMap)
+      octoclient()
+    except rospy.ServiceException as e:
+      print ("Fail to stop octo map controller: %s"%e)
+      return False, None
 
   return True, target_transform
 
@@ -121,24 +123,51 @@ def grasp_object( planner, object_pose, given_grasps=None, object_name = None):
       if len(gripper_pos_list) == 0:
         # we have to try all grasps
         gripper_pos_list = planner.getAllGrasps()
+    else:
+      pre_definedGrasps = []
+      for obj_grasp_pos, jaw_width in gripper_pos_list:
+        pre_definedGrasps.append([obj_grasp_pos, jaw_width])
+      possibleGrasps = planner.getAllGrasps()
+      gripper_pos_list = []
+      for t_pose, _ in pre_definedGrasps:
+        grasp_inv_rot = np.transpose(t_pose[:3,:3])
+        grasp_trans = t_pose[:,3:]
+
+        grasp_temp = []
+        rot_diff = []
+        tran_diff = []
+        for ppose, pwidth in possibleGrasps:
+          rot_diff.append(np.linalg.norm(R.from_dcm(np.dot(grasp_inv_rot,ppose[:3,:3])).as_rotvec()))
+          tran_diff.append(np.linalg.norm(ppose[:,3:] - grasp_trans))
+          grasp_temp.append([ppose, pwidth, 0])
+        tran_diff = softmax(tran_diff)
+        rot_diff = softmax(rot_diff)
+        for i in range(len(grasp_temp)):
+          grasp_temp[i][2] = tran_diff[i] + rot_diff[i]
+
+        def sortfun(e):
+            return e[2]
+        grasp_temp.sort(key=sortfun)
+
+        gripper_pos_list.append((grasp_temp[0][0], grasp_temp[0][1]))
 
     print "Going through this many grasp pose: " ,len(gripper_pos_list)
     for i, (obj_grasp_pos, jaw_width) in enumerate(gripper_pos_list):
 
         obj_grasp_trans_obframe = getTransformFromPoseMat(obj_grasp_pos) #Tranfrom gripper posmatx to (trans,rot)
         # obj_grasp_trans_obframe = transformProduct(obj_grasp_trans_obframe, [[0.01,0,0],[0,0,0,1]]) # try to move the gripper forward little
-        obj_pre_grasp_trans =  transformProduct(obj_grasp_trans_obframe, [[-0.07,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
+        obj_pre_grasp_trans =  transformProduct(obj_grasp_trans_obframe, [[-0.06,0,0],[0,0,0,1]]) #adjust the grasp pos to be a little back 
         obj_pre_grasp_trans = transformProduct(tran_base_object, obj_pre_grasp_trans)
         obj_grasp_trans = transformProduct(tran_base_object, obj_grasp_trans_obframe)
 
         # need to ensure both grasp and pre-grasp is valid for robot
-        grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_grasp_trans, 50)
+        # grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_grasp_trans, 80)
 
-        if grasp_ik_result == None:
-            print 'check on grasp ', i
-            continue
+        # if grasp_ik_result == None:
+        #     print 'check on grasp ', i
+        #     continue
 
-        pre_grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_pre_grasp_trans, 30)
+        pre_grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_pre_grasp_trans, 50)
 
         if pre_grasp_ik_result == None:
             print 'check on grasp ', i
@@ -364,12 +393,12 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
   for grasp, jawwidth in target_grasps:
     planner.addGoalGrasp(grasp, jawwidth)
 
-  g = planner.PlacementG
-  labels = {n: g.nodes[n]['stable'] for n in g.nodes}
-  colors = [g.nodes[n]['stable'] for n in g.nodes]
-  nx.draw(g, with_labels=True, labels=labels, node_color=colors)
-  plt.draw()
-  plt.show()
+  # g = planner.PlacementG
+  # labels = {n: g.nodes[n]['stable'] for n in g.nodes}
+  # colors = [g.nodes[n]['stable'] for n in g.nodes]
+  # nx.draw(g, with_labels=True, labels=labels, node_color=colors)
+  # plt.draw()
+  # plt.show()
 
   try:
     # this function will return multiple paths
@@ -415,6 +444,23 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
         print "fail with placing grasp"
         continue
 
+      # while not rospy.is_shutdown():
+
+      #   tf_helper.pubTransform("current_place", getTransformFromPoseMat(manipulation_position.dot(real_placement)))
+
+      #   gripper_id_list = planner.getGraspIdsByPlacementId(currentplacementid)
+      #   current_grasps_of_placement = planner.getGraspsById(gripper_id_list) # List of pos that that match placement
+      #   for e, current_grasp in enumerate(current_grasps_of_placement):
+      #     tf_helper.pubTransform("current_grasp_" + str(e), getTransformFromPoseMat(manipulation_position.dot(real_placement).dot(current_grasp[0])))
+
+        # for e, nextgrasp_candidate_pair in enumerate(grasps_between_placements[i]):
+        #   if type(nextgrasp_candidate_pair) == tuple:
+        #     nextgrasp_candidate = PandaPosMax_t_PosMat(pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * nextgrasp_candidate_pair[0]) # convert the target grasp to correct format
+        #   else:
+        #     nextgrasp_candidate = planner.getGraspsById([nextgrasp_candidate_pair])[0][0] # convert grasp id to grasp pose
+        #   tf_helper.pubTransform("place_grasp", getTransformFromPoseMat(placing_grasp))
+        #   tf_helper.pubTransform("pick_grasp_" + str(e), getTransformFromPoseMat(manipulation_position.dot(real_placement).dot(nextgrasp_candidate)))
+      
       for nextgrasp_candidate_pair in grasps_between_placements[i]:
         print "check next grasp"
         candidate_jawwidth = 0
@@ -484,7 +530,6 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
           robot.switchController('arm_controller', 'my_cartesian_motion_controller')
 
         else: # current placement is unstable
-          print "use dmg"
           # tf_helper.pubTransform("place_grasp", getTransformFromPoseMat(placing_grasp))
           # tf_helper.pubTransform("pick_grasp", getTransformFromPoseMat(manipulation_position.dot(real_placement).dot(nextgrasp_candidate)))
           # get a trajectory of regrasping pose in the object frame with numpy pose mat format
