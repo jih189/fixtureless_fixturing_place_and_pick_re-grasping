@@ -167,7 +167,7 @@ def grasp_object( planner, object_pose, given_grasps=None, object_name = None):
         #     print 'check on grasp ', i
         #     continue
 
-        pre_grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_pre_grasp_trans, 50)
+        pre_grasp_ik_result = robot.solve_ik_sollision_free_in_base(obj_pre_grasp_trans, 30)
 
         if pre_grasp_ik_result == None:
             print 'check on grasp ', i
@@ -374,7 +374,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
 
   # input pose should be numpy format in the base_link
   def feasible(inputpose):
-    place_ik_result = robot.solve_ik_sollision_free_in_base(getTransformFromPoseMat(inputpose),30)
+    place_ik_result = robot.solve_ik_sollision_free_in_base(getTransformFromPoseMat(inputpose),20)
 
     if place_ik_result != None:
       return True
@@ -537,6 +537,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
           if dmgresult == None:
             continue
           else:
+            # if not placedown_with_constraints(placing_grasp):
             if not placedown(placing_grasp):
               continue
 
@@ -551,6 +552,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
             for graspPos in dmgresult:
 
               regraspTran = getTransformFromPoseMat(object_in_base_link.dot(graspPos))
+              regraspTran[0][2] += 0.009
               # publish the next regrasp pos in the tf for debug
               tf_helper.pubTransform("regrasp pos", regraspTran)
               
@@ -586,12 +588,12 @@ def move_arm_to_startPos(robot):
 
 if __name__=='__main__':
 
-  # object_name = "cup"
+  object_name = "cup"
   # object_name = "book"
   # object_name = "box"
   # object_name = "cuboid"
-  object_name = "almonds_can"
-  isSim = False
+  # object_name = "almonds_can"
+  isSim = True
 
 
   rospy.init_node('test_node')
@@ -643,7 +645,7 @@ if __name__=='__main__':
   
   raw_input("Ready to pick up object?")
   
-  result = pickup(tf_helper, 0.2)
+  result = pickup(tf_helper, 0.15)
   print "pick up object"
   if result:
     print "---SUCCESS---"
@@ -651,7 +653,7 @@ if __name__=='__main__':
     print "---FAILURE---"
     exit()
 
-  # # need to move to pre-place-plan-position
+  # # # need to move to pre-place-plan-position
   # result = align_gripper(tf_helper, robot, manipulation_trans_on_table, 0.35)
   # print "align the gripper down"
   # if result:

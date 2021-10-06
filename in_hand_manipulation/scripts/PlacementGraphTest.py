@@ -207,7 +207,7 @@ class Placement_graph_test():
         return True, target_grasps
 
 if __name__=='__main__':
-    object_name = "almonds_can"
+    object_name = "book"
     isSim = False
 
     base = pandactrl.World(camp=[700,300,1400], lookatp=[0,0,0])
