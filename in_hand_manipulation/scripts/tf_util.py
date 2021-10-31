@@ -245,8 +245,9 @@ class TF_Helper():
         self.br.sendTransform(t, q, rospy.Time.now(), name, 'base_link')
 
     def getTransform(self, parent_link, child_link):
-        self.listener.waitForTransform(parent_link, child_link, rospy.Time(), rospy.Duration(10.0))
-        trans, rot = self.listener.lookupTransform(parent_link, child_link, rospy.Time())
+        now = rospy.Time.now()
+        self.listener.waitForTransform(parent_link, child_link, now, rospy.Duration(10.0))
+        trans, rot = self.listener.lookupTransform(parent_link, child_link, now)
         return trans, rot
 
     def getPose(self, parent_link, child_link, pose):

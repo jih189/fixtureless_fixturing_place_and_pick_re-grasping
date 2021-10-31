@@ -79,7 +79,7 @@ class Fetch_Robot():
         self.group_names = self.robot.get_group_names()
         print "=========== Robot Groups:", self.group_names
 
-        self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject)
+        self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject, queue_size=10)
 
         self.timeout = 4.0
 
@@ -90,7 +90,7 @@ class Fetch_Robot():
         self.targetFrame.header.frame_id = self.armbasename
         self.thread = None
 
-        self.transThreshold = 0.005
+        self.transThreshold = 0.001
         self.rotThreshold = 0.03
 
         # used to get current robot state
@@ -421,6 +421,15 @@ class Fetch_Robot():
         second = rospy.get_time()
         while (second - start) < self.timeout and not rospy.is_shutdown():
             if objectname in self.scene.get_known_object_names():
+                break
+            second = rospy.get_time()
+
+    def removeCollisionObject(self, objectname):
+        self.scene.remove_world_object(objectname)
+        start = rospy.get_time()
+        second = rospy.get_time()
+        while (second - start) < self.timeout and not rospy.is_shutdown():
+            if not objectname in self.scene.get_known_object_names():
                 break
             second = rospy.get_time()
 

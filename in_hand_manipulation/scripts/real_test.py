@@ -386,6 +386,8 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
   
   # create the regrasp graph
   planner.CreatePlacementGraph()
+
+  
   # the init grasp pose is numpy format, init jawwidth is in meter unit
   planner.addStartGrasp(init_graspPose,init_jawwidth)
   

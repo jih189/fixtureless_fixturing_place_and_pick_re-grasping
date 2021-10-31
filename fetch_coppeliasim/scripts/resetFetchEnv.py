@@ -188,7 +188,7 @@ def resetEnv(clientID, arm, gripper, torso):
 
     moveObjectTo(clientID, "Table", [0.77, 0.075, 0.3946], [0.5,0.5,0.5,-0.5]) # it was [-0.025, 0.5, 0.35]
     moveObjectTo(clientID, "cup", [0.79, 0.2, 0.8538], [0.5,0.5, 0.5,0.5]) # it was [0.021, 0.463, 0.7775]
-    # moveObjectTo(clientID, "book", [0.79, 0.2, 0.94], [0.5, 0.5, 0.5, 0.5]) 
+    moveObjectTo(clientID, "book", [0.79, 0.2, 0.94], [0.5, 0.5, 0.5, 0.5]) 
     # moveObjectTo(clientID, "almonds_can", [0.79, 0.2, 0.97], [0.5, 0.5, 0.5, 0.5]) 
 
     # gripper.close()
