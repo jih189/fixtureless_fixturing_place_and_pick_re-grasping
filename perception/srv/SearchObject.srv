@@ -1,5 +1,0 @@
-bool startsearch
-int8 actiontype
-geometry_msgs/Pose poseInHand
----
-# Empty response

@@ -1,8 +1,0 @@
-This document describes the purpose of each file in the current directory
-1. hint.py: this is the first regrasping main file, but it is used as the hint now.
-2. fetch_robot.py: this is the interface for controllering Fetch robot and the moveit planning scene
-3. grasp_test.py: this is the main file for grasping the object on the table in the real world(sanmi will add more stuff here maybe for regrasping)
-4. moveit_test.py: sanmi's script for testing moveit maybe
-5. regrasp_planner.py: this is a planner used to search placement sequence for regrasping the object
-5. sim_test.py: this is the main file to run the regrasping in the simulation
-6. tf_util.py: this is a helper file for tf
