@@ -12,6 +12,7 @@
 
     <!-- run the controller -->
     <node name="arm_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn arm_controller torso_controller gripper_controller mobile_base_controller" respawn="false" output="screen"/>
+
     <!-- load the controller -->
     <node name="arm_controller_loader" pkg="controller_manager" type="controller_manager" args="load my_motion_control_handle my_cartesian_motion_controller  arm_with_torso_controller" respawn="false" output="screen"/>
 
@@ -52,5 +53,8 @@
     </node>
 
     <include file="$(find rail_segmentation)/launch/searchtable.launch" />
+
+    <!-- diff drive remapper -->
+    <node pkg="fetch_coppeliasim" name="remap_diff_drive_controller" type="remap_diff_drive_controller.py" output="screen" />
     
 </launch>
