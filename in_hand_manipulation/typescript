@@ -1,246 +1,0 @@
-Script started on 2021-08-26 15:20:19-0700
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner[00m$ ls
-CMakeLists.txt  [0m[01;34mlaunch[0m       README   [01;34msrc[0m
-[01;34minclude[0m         package.xml  [01;34mscripts[0m  typescript
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner[00m$ cd sc ripts/
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ ls
-fetch_robot.py   [0m[01;34mobjects[0m       regrasp_planner.py   [01;34mtemp[0m
-fetch_robot.pyc  README        regrasp_planner.pyc  tf_util.py
-[01;32mgrasp_test.py[0m    real_test.py  sim_test.py          tf_util.pyc
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ python real_test.py 
-Traceback (most recent call last):
-  File "real_test.py", line 8, in <module>
-    from rail_segmentation.srv import SearchTable
-ImportError: No module named rail_segmentation.srv
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ cd
-]0;lambda@lambda-System-Product-Name: ~[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~[00m$ cd catkin_ws/
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws[00m$ source devcel[K[K[Kel/setup.bash 
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws[00m$ roscd regrasp_planner/
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner[00m$ cd sc ripts/
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ ls
-fetch_robot.py   [0m[01;34mobjects[0m       regrasp_planner.py   [01;34mtemp[0m
-fetch_robot.pyc  README        regrasp_planner.pyc  tf_util.py
-[01;32mgrasp_test.py[0m    real_test.py  sim_test.py          tf_util.pyc
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ python real_test.py 
-[0m[ INFO] [1630016567.033571597]: Loading robot model 'fetch'...[0m
-[0m[ INFO] [1630016567.155985875]: No root/virtual joint specified in SRDF. Assuming fixed joint[0m
-[33m[ WARN] [1630016576.297636134]: Kinematics solver doesn't support #attempts anymore, but only a timeout.
-Please remove the parameter '/robot_description_kinematics/arm/kinematics_solver_attempts' from your configuration.[0m
-[33m[ WARN] [1630016578.114186555]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-[0m[ INFO] [1630016591.249113369]: Ready to take commands for planning group arm.[0m
-[INFO] [1630016593.373485]: Waiting for gripper controller
-[INFO] [1630016593.910173]: Found gripper controller!
-=========== Reference frame:base_link
-=========== End effector: wrist_roll_link
-=========== Robot Groups: ['arm', 'arm_with_torso', 'gripper']
-/home/lambda/catkin_ws/src/regrasp_planner/scripts/fetch_robot.py:82: SyntaxWarning: The publisher should be created with an explicit keyword argument 'queue_size'. Please see http://wiki.ros.org/rospy/Overview/Publishers%20and%20Subscribers for more information.
-  self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject)
-[33m[ WARN] [1630016594.344034370]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-Known pipe types:
-  glxGraphicsPipe
-(1 aux display modules not yet loaded.)
-table detection and placement analysis
----SUCCESS---
-canTransform: source_frame book does not exist.
-object pose estimation
----FAILURE---
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ [K[A]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/
-/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ [K[A[A]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ python real_test.py [C[C[C[Kpython real_test.py 
-[0m[ INFO] [1630016827.308968877]: Loading robot model 'fetch'...[0m
-[0m[ INFO] [1630016827.657380420]: No root/virtual joint specified in SRDF. Assuming fixed joint[0m
-[33m[ WARN] [1630016837.523797298]: Kinematics solver doesn't support #attempts anymore, but only a timeout.
-Please remove the parameter '/robot_description_kinematics/arm/kinematics_solver_attempts' from your configuration.[0m
-[33m[ WARN] [1630016839.636505098]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-[0m[ INFO] [1630016854.683977875]: Ready to take commands for planning group arm.[0m
-[INFO] [1630016855.854279]: Waiting for gripper controller
-[INFO] [1630016856.466108]: Found gripper controller!
-=========== Reference frame:base_link
-=========== End effector: wrist_roll_link
-=========== Robot Groups: ['arm', 'arm_with_torso', 'gripper']
-/home/lambda/catkin_ws/src/regrasp_planner/scripts/fetch_robot.py:82: SyntaxWarning: The publisher should be created with an explicit keyword argument 'queue_size'. Please see http://wiki.ros.org/rospy/Overview/Publishers%20and%20Subscribers for more information.
-  self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject)
-[33m[ WARN] [1630016856.836236324]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-Known pipe types:
-  glxGraphicsPipe
-(1 aux display modules not yet loaded.)
-table detection and placement analysis
----SUCCESS---
-canTransform: source_frame book does not exist.
-object pose estimation
----FAILURE---
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ python real_test.py 
-[0m[ INFO] [1630016937.952916848]: Loading robot model 'fetch'...[0m
-[0m[ INFO] [1630016938.107747187]: No root/virtual joint specified in SRDF. Assuming fixed joint[0m
-[33m[ WARN] [1630016947.102601578]: Kinematics solver doesn't support #attempts anymore, but only a timeout.
-Please remove the parameter '/robot_description_kinematics/arm/kinematics_solver_attempts' from your configuration.[0m
-[33m[ WARN] [1630016949.316291059]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-[0m[ INFO] [1630016960.981957287]: Ready to take commands for planning group arm.[0m
-[INFO] [1630016962.297827]: Waiting for gripper controller
-[INFO] [1630016962.498265]: Found gripper controller!
-=========== Reference frame:base_link
-=========== End effector: wrist_roll_link
-=========== Robot Groups: ['arm', 'arm_with_torso', 'gripper']
-/home/lambda/catkin_ws/src/regrasp_planner/scripts/fetch_robot.py:82: SyntaxWarning: The publisher should be created with an explicit keyword argument 'queue_size'. Please see http://wiki.ros.org/rospy/Overview/Publishers%20and%20Subscribers for more information.
-  self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject)
-[33m[ WARN] [1630016963.176235074]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-Known pipe types:
-  glxGraphicsPipe
-(1 aux display modules not yet loaded.)
-table detection and placement analysis
----SUCCESS---
-canTransform: source_frame book does not exist.
-object pose estimation
----FAILURE---
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ python real_test.py 
-[0m[ INFO] [1630017361.369640264]: Loading robot model 'fetch'...[0m
-[0m[ INFO] [1630017361.680483647]: No root/virtual joint specified in SRDF. Assuming fixed joint[0m
-[33m[ WARN] [1630017372.130817574]: Kinematics solver doesn't support #attempts anymore, but only a timeout.
-Please remove the parameter '/robot_description_kinematics/arm/kinematics_solver_attempts' from your configuration.[0m
-[33m[ WARN] [1630017374.070475030]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-[0m[ INFO] [1630017389.310528692]: Ready to take commands for planning group arm.[0m
-[INFO] [1630017390.466379]: Waiting for gripper controller
-[INFO] [1630017390.680930]: Found gripper controller!
-=========== Reference frame:base_link
-=========== End effector: wrist_roll_link
-=========== Robot Groups: ['arm', 'arm_with_torso', 'gripper']
-/home/lambda/catkin_ws/src/regrasp_planner/scripts/fetch_robot.py:82: SyntaxWarning: The publisher should be created with an explicit keyword argument 'queue_size'. Please see http://wiki.ros.org/rospy/Overview/Publishers%20and%20Subscribers for more information.
-  self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject)
-[33m[ WARN] [1630017391.110114957]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-Known pipe types:
-  glxGraphicsPipe
-(1 aux display modules not yet loaded.)
-table detection and placement analysis
----SUCCESS---
-object pose estimation
----SUCCESS---
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ python real_test.py 
-[0m[ INFO] [1630018068.417409048]: Loading robot model 'fetch'...[0m
-[0m[ INFO] [1630018068.743470349]: No root/virtual joint specified in SRDF. Assuming fixed joint[0m
-[33m[ WARN] [1630018078.626935261]: Kinematics solver doesn't support #attempts anymore, but only a timeout.
-Please remove the parameter '/robot_description_kinematics/arm/kinematics_solver_attempts' from your configuration.[0m
-[33m[ WARN] [1630018080.950629842]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-[0m[ INFO] [1630018097.943985895]: Ready to take commands for planning group arm.[0m
-[INFO] [1630018098.951047]: Waiting for gripper controller
-[INFO] [1630018099.129887]: Found gripper controller!
-=========== Reference frame:base_link
-=========== End effector: wrist_roll_link
-=========== Robot Groups: ['arm', 'arm_with_torso', 'gripper']
-/home/lambda/catkin_ws/src/regrasp_planner/scripts/fetch_robot.py:82: SyntaxWarning: The publisher should be created with an explicit keyword argument 'queue_size'. Please see http://wiki.ros.org/rospy/Overview/Publishers%20and%20Subscribers for more information.
-  self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject)
-[33m[ WARN] [1630018100.112809607]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-Known pipe types:
-  glxGraphicsPipe
-(1 aux display modules not yet loaded.)
-table detection and placement analysis
----SUCCESS---
-object pose estimation
----SUCCESS---
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ python real_test.py 
-[0m[ INFO] [1630018158.053061695]: Loading robot model 'fetch'...[0m
-[0m[ INFO] [1630018158.213278204]: No root/virtual joint specified in SRDF. Assuming fixed joint[0m
-[33m[ WARN] [1630018166.952447719]: Kinematics solver doesn't support #attempts anymore, but only a timeout.
-Please remove the parameter '/robot_description_kinematics/arm/kinematics_solver_attempts' from your configuration.[0m
-[33m[ WARN] [1630018169.297513924]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-[0m[ INFO] [1630018184.354523865]: Ready to take commands for planning group arm.[0m
-[INFO] [1630018185.921101]: Waiting for gripper controller
-[INFO] [1630018186.084086]: Found gripper controller!
-=========== Reference frame:base_link
-=========== End effector: wrist_roll_link
-=========== Robot Groups: ['arm', 'arm_with_torso', 'gripper']
-/home/lambda/catkin_ws/src/regrasp_planner/scripts/fetch_robot.py:82: SyntaxWarning: The publisher should be created with an explicit keyword argument 'queue_size'. Please see http://wiki.ros.org/rospy/Overview/Publishers%20and%20Subscribers for more information.
-  self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject)
-[33m[ WARN] [1630018186.920521819]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-Known pipe types:
-  glxGraphicsPipe
-(1 aux display modules not yet loaded.)
-table detection and placement analysis
----SUCCESS---
-object pose estimation
----SUCCESS---
-go grasp object
-Going through this many grasp pose:  99
-grasp object
----SUCCESS---
-Ready to pick up object?
-pick up object
----SUCCESS---
-ready to regrasp
-get target grasps
----SUCCESS---
-time to add target grasp =  0.218824863434
-final path
-[(3L, 1L), ('end_g', -1)]
-final grasp traject
-[[(LMatrix4f(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 55, 0, 0, 1), 90.0), (LMatrix4f(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 55, 0, 0, 1), 90.0)]]
-Traceback (most recent call last):
-  File "real_test.py", line 484, in <module>
-    result, object_pose_in_hand = regrasping(tf_helper, robot, planner, dmg_planner, object_name, manipulation_trans_on_table, target_grasps, init_grasp_transform_in_object_frame, init_jawwidth, base=base)
-  File "real_test.py", line 307, in regrasping
-    placing_grasp = getMatrixFromQuaternionAndTrans(placing_grasp)
-TypeError: getMatrixFromQuaternionAndTrans() takes exactly 2 arguments (1 given)
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scriptss[00m$ [K[A]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts [00m$ [K[A]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[[00m$ [K[A]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[000m$ [K[A]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ [K]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ [K]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ [K]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ [K]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ pythonn real_test.py 
-[0m[ INFO] [1630018734.827230927]: Loading robot model 'fetch'...[0m
-[0m[ INFO] [1630018734.951137230]: No root/virtual joint specified in SRDF. Assuming fixed joint[0m
-[33m[ WARN] [1630018745.159149163]: Kinematics solver doesn't support #attempts anymore, but only a timeout.
-Please remove the parameter '/robot_description_kinematics/arm/kinematics_solver_attempts' from your configuration.[0m
-ccc[33m[ WARN] [1630018746.784164410]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-cccccccccccz66^Z
-[1]+  Stopped                 python real_test.py
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ ps 
-  PID TTY          TIME CMD
-20551 pts/6    00:00:00 bash
-20823 pts/6    00:00:04 python
-21747 pts/6    00:00:00 ps
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ kill  -9 20823
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ kill --9 20823[A]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ [2Pps
-[K[A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[Cythonn real_test.py 
-[0m[ INFO] [1630018967.165852426]: Loading robot model 'fetch'...[0m
-[0m[ INFO] [1630018967.252017481]: No root/virtual joint specified in SRDF. Assuming fixed joint[0m
-[33m[ WARN] [1630018976.093681077]: Kinematics solver doesn't support #attempts anymore, but only a timeout.
-Please remove the parameter '/robot_description_kinematics/arm/kinematics_solver_attempts' from your configuration.[0m
-[33m[ WARN] [1630018977.704104502]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-[0m[ INFO] [1630018991.839975539]: Ready to take commands for planning group arm.[0m
-[INFO] [1630018993.232402]: Waiting for gripper controller
-[INFO] [1630018993.384700]: Found gripper controller!
-=========== Reference frame:base_link
-=========== End effector: wrist_roll_link
-=========== Robot Groups: ['arm', 'arm_with_torso', 'gripper']
-/home/lambda/catkin_ws/src/regrasp_planner/scripts/fetch_robot.py:82: SyntaxWarning: The publisher should be created with an explicit keyword argument 'queue_size'. Please see http://wiki.ros.org/rospy/Overview/Publishers%20and%20Subscribers for more information.
-  self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject)
-[33m[ WARN] [1630018994.218309219]: The root link base_link has an inertia specified in the URDF, but KDL does not support a root link with an inertia.  As a workaround, you can add an extra dummy link to your URDF.[0m
-Known pipe types:
-  glxGraphicsPipe
-(1 aux display modules not yet loaded.)
-table detection and placement analysis
----SUCCESS---
-object pose estimation
----SUCCESS---
-go grasp object
-Going through this many grasp pose:  99
-grasp object
----SUCCESS---
-Ready to pick up object?
-pick up object
----SUCCESS---
-ready to regrasp
-get target grasps
----SUCCESS---
-time to add target grasp =  0.177308082581
-final path
-[(3L, 1L), ('end_g', -1)]
-final grasp traject
-[[(LMatrix4f(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 55, 0, 0, 1), 90.0), (LMatrix4f(1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 55, 0, 0, 1), 90.0)]]
-init grasp and target grasp does not share the same plane
-Traceback (most recent call last):
-  File "real_test.py", line 484, in <module>
-    result, object_pose_in_hand = regrasping(tf_helper, robot, planner, dmg_planner, object_name, manipulation_trans_on_table, target_grasps, init_grasp_transform_in_object_frame, init_jawwidth, base=base)
-  File "real_test.py", line 354, in regrasping
-    dmgresult = dmgplanner.getTrajectory(init_graspPose, nextgrasp_candidate, candidate_jawwidth, manipulation_position.dot(real_placement), base)
-  File "/home/lambda/.local/lib/python2.7/site-packages/manipulation/grip/ffregrasp.py", line 1010, in getTrajectory
-    shortenPoseTrajectory.append(poseTrajectory[i])
-IndexError: list index out of range
-[1]+  Killed                  python real_test.py
-]0;lambda@lambda-System-Product-Name: ~/catkin_ws/src/regrasp_planner/scripts[01;32mlambda@lambda-System-Product-Name[00m:[01;34m~/catkin_ws/src/regrasp_planner/scripts[00m$ exit
-exit
-
-Script done on 2021-08-26 16:16:05-0700

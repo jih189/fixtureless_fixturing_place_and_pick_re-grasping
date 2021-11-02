@@ -1,8 +1,0 @@
-<?xml version="1.0"?>
-<launch>
-    <arg name="object_name" default="cuboid" />
-    <node name="octo_map_controller" pkg="in_hand_manipulation" type="octomap_filter" output="screen" />
-    <node name="object_segementation_filter_node" pkg="object_segmentation" type="mask_filter_server.py" args="$(arg object_name)" output="screen" />
-    <node name="pose_estimation_node" pkg="icra20_manipulation_pose" type="pose_estimation" args="$(find icra20_manipulation_pose)/$(arg object_name)_config.yaml" output="screen" />
-    <include file="$(find rail_segmentation)/launch/searchtable.launch" />
-</launch>

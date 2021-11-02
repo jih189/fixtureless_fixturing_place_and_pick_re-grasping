@@ -1,9 +1,0 @@
-<?xml version="1.0"?>
-<launch>
-    <rosparam command="load"  file="$(find fetch_moveit_config)/config/sensors.yaml" />
-    <param name="octomap_frame" type="string" value="odom_combined" />
-    <param name="octomap_resolution" type="double" value="0.05" />
-    <param name="max_range" type="double" value="5.0" />
-
-    <node type="rviz" name="rviz" pkg="rviz" />
-</launch>
