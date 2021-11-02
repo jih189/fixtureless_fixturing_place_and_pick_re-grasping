@@ -52,7 +52,7 @@
 
     </node>
 
-    <include file="$(find rail_segmentation)/launch/searchtable.launch" />
+    <!--include file="$(find rail_segmentation)/launch/searchtable.launch" /-->
 
     <!-- diff drive remapper -->
     <node pkg="fetch_coppeliasim" name="remap_diff_drive_controller" type="remap_diff_drive_controller.py" output="screen" />
