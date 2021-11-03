@@ -44,3 +44,22 @@ source devel/setup.bash
 ### Launch Steps
 1. roslaunch fetch_coppeliasim simulation.Launch
 2. roslaunch fetch_coppeliasim fetch_control.launch
+## Scene Building
+There are three ways to import the scene:
+1. Import by .ttt(File->Open Scene...). This will load the scene directly, but we do not have enough .ttt format rooms currently.
+2. Import by loading mesh files(File->Import->Mesh...), so you can select a mesh file(.obj, .dae, .stl). However, such kind of object have no physics property and will flow into the air. Therefore, 
+you need to add enough physics properties by yourself(select the object, and click "Scene Object Properties" item on the left side of the window, then click "show dynamic properties dialog" button at
+the button of the popped up window, and click the "Body is respondable" and "Body is dynamic" checkbox).
+
+3. Import by "URDF import"(Plugins->URDF import...). If you want to import a urdf file, you need to put the file under the "objects_desciption" directory, and recompile and source the workspace.
+Then you can launch Coppeliasim and use the URDF import. Remeber uncheck "Convex decompose non-convex collision..." and check "Alternate local respondable masks". Them you can import the urdf file. 
+
+If you want to use the urdf from "partnet", you have to do some modifications. For example, you download a table urdf file named "32761". After you unzip it, change its name
+to "table" if you can, and move it under the "objects_desciption". Open the "mobility.urdf" file, and change all "filename="" to "filename="package://objects_desciption/[object name]/", so
+the URDF import can recognize it later.
+
+Warming:
+
+The object's origin point will be modifed after import.
+
+https://forum.coppeliarobotics.com/viewtopic.php?t=885
