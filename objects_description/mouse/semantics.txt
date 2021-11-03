@@ -1,0 +1,8 @@
+link_0 slider button
+link_1 slider button
+link_2 slider button
+link_3 hinge wheel
+link_4 slider button
+link_5 slider button
+link_6 slider button
+link_7 free mouse_body

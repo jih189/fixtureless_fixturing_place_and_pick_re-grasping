@@ -1,0 +1,5 @@
+link_0 hinge toggle_button
+link_1 hinge toggle_button
+link_2 hinge toggle_button
+link_3 hinge toggle_button
+link_4 static switch_frame

@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>objects_description</name>
+  <version>0.8.2</version>
+  <description>
+    URDF for objects.
+  </description>
+  <maintainer email="jih189@ucsd.edu">Jiaming Hu</maintainer>
+
+  <license>BMI</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <exec_depend>urdf</exec_depend>
+  <exec_depend>xacro</exec_depend>
+</package>

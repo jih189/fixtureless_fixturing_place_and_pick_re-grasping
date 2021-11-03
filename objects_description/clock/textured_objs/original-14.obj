@@ -1,0 +1,16 @@
+# SSTK version 0.8.0
+# 14
+mtllib original-14.mtl
+o mesh13/mesh13-geometry#mesh13-geometry
+v -0.066269 -0.108457 0.006448
+v 0.140081 0.878059 0.006448
+v -0.026306 -0.115770 0.006448
+v 0.130012 0.879896 0.006448
+vn 0 0 -1
+vn 0 0 1
+usemtl material_0_0
+f 1//1 2//1 3//1
+f 2//1 1//1 4//1
+usemtl material_1_0
+f 3//2 2//2 1//2
+f 4//2 1//2 2//2

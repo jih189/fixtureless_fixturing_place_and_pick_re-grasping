@@ -1,0 +1,848 @@
+<?xml version="1.0" ?>
+<robot name="partnet_b50c25e6b5447714e90f8ac2c1271ce3">
+	<link name="base"/>
+	<link name="link_0">
+		<visual name="drawer_front-51">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-62.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-51">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-58.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-51">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-59.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_side-52">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-63.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_side-53">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-60.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_back-54">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-61.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_bottom-55">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-64.obj"/>
+			</geometry>
+		</visual>
+		<visual name="handle-48">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-78.obj"/>
+			</geometry>
+		</visual>
+		<visual name="handle-48">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-79.obj"/>
+			</geometry>
+		</visual>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-62.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-58.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-59.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-63.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-60.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-61.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-64.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-78.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-79.obj"/>
+			</geometry>
+		</collision>
+	</link>
+	<joint name="joint_0" type="prismatic">
+		<origin xyz="0 0 0"/>
+		<axis xyz="0 0 1"/>
+		<child link="link_0"/>
+		<parent link="link_4"/>
+		<limit lower="0" upper="0.5"/>
+	</joint>
+	<link name="link_1">
+		<visual name="drawer_front-42">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-54.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-42">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-50.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-42">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-51.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_side-43">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-55.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_side-44">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-52.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_back-45">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-53.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_bottom-46">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-56.obj"/>
+			</geometry>
+		</visual>
+		<visual name="handle-39">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-75.obj"/>
+			</geometry>
+		</visual>
+		<visual name="handle-39">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-76.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_rails-40">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-37.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_rails-41">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-25.obj"/>
+			</geometry>
+		</visual>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-54.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-50.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-51.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-55.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-52.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-53.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-56.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-75.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-76.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-37.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-25.obj"/>
+			</geometry>
+		</collision>
+	</link>
+	<joint name="joint_1" type="prismatic">
+		<origin xyz="0 0 0"/>
+		<axis xyz="0 0 1"/>
+		<child link="link_1"/>
+		<parent link="link_4"/>
+		<limit lower="0" upper="0.5"/>
+	</joint>
+	<link name="link_2">
+		<visual name="drawer_front-33">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-46.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-33">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-43.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-33">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-42.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_side-34">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-47.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_side-35">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-44.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_back-36">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-45.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_bottom-37">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-48.obj"/>
+			</geometry>
+		</visual>
+		<visual name="handle-30">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-72.obj"/>
+			</geometry>
+		</visual>
+		<visual name="handle-30">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-73.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_rails-31">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-38.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_rails-32">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-26.obj"/>
+			</geometry>
+		</visual>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-46.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-43.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-42.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-47.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-44.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-45.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-48.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-72.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-73.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-38.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-26.obj"/>
+			</geometry>
+		</collision>
+	</link>
+	<joint name="joint_2" type="prismatic">
+		<origin xyz="0 0 0"/>
+		<axis xyz="0 0 1"/>
+		<child link="link_2"/>
+		<parent link="link_4"/>
+		<limit lower="0" upper="0.5"/>
+	</joint>
+	<link name="link_3">
+		<visual name="drawer_front-10">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-5.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-10">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-7.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-10">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-3.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_side-11">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-6.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_side-12">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-8.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_back-13">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-4.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_bottom-14">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-10.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_bottom-14">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-2.obj"/>
+			</geometry>
+		</visual>
+		<visual name="handle-9">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-66.obj"/>
+			</geometry>
+		</visual>
+		<visual name="handle-9">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-67.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_rails-22">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-40.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_rails-23">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-28.obj"/>
+			</geometry>
+		</visual>
+		<visual name="other_leaf-25">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-9.obj"/>
+			</geometry>
+		</visual>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-5.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-7.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-3.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-6.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-8.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-4.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-10.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-2.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-66.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-67.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-40.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-28.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-9.obj"/>
+			</geometry>
+		</collision>
+	</link>
+	<joint name="joint_3" type="prismatic">
+		<origin xyz="0 0 0"/>
+		<axis xyz="0 0 1"/>
+		<child link="link_3"/>
+		<parent link="link_4"/>
+		<limit lower="0" upper="0.5"/>
+	</joint>
+	<link name="link_4">
+		<visual name="vertical_side_panel-56">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-29.obj"/>
+			</geometry>
+		</visual>
+		<visual name="vertical_side_panel-57">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-20.obj"/>
+			</geometry>
+		</visual>
+		<visual name="back_panel-58">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-31.obj"/>
+			</geometry>
+		</visual>
+		<visual name="top_panel-59">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-30.obj"/>
+			</geometry>
+		</visual>
+		<visual name="frame_vertical_bar-60">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-35.obj"/>
+			</geometry>
+		</visual>
+		<visual name="frame_vertical_bar-61">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-22.obj"/>
+			</geometry>
+		</visual>
+		<visual name="frame_horizontal_bar-62">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-36.obj"/>
+			</geometry>
+		</visual>
+		<visual name="frame_horizontal_bar-63">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-24.obj"/>
+			</geometry>
+		</visual>
+		<visual name="frame_horizontal_bar-64">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-32.obj"/>
+			</geometry>
+		</visual>
+		<visual name="frame_vertical_bar-65">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-34.obj"/>
+			</geometry>
+		</visual>
+		<visual name="frame_vertical_bar-66">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-23.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_rails-26">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-39.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_rails-27">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-27.obj"/>
+			</geometry>
+		</visual>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-29.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-20.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-31.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-30.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-35.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-22.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-36.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-24.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-32.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-34.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-23.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-39.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-27.obj"/>
+			</geometry>
+		</collision>
+	</link>
+	<joint name="joint_4" type="fixed">
+		<origin rpy="1.570796326794897 0 -1.570796326794897" xyz="0 0 0"/>
+		<child link="link_4"/>
+		<parent link="base"/>
+	</joint>
+	<link name="link_5">
+		<visual name="handle-16">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-69.obj"/>
+			</geometry>
+		</visual>
+		<visual name="handle-16">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-70.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-17">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-16.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-17">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-12.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_front-17">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-13.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_side-18">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-14.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_side-19">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-17.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_back-20">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-15.obj"/>
+			</geometry>
+		</visual>
+		<visual name="drawer_bottom-21">
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-18.obj"/>
+			</geometry>
+		</visual>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-69.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-70.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-16.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-12.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-13.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-14.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-17.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-15.obj"/>
+			</geometry>
+		</collision>
+		<collision>
+			<origin xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="package://objects_description/storage2/textured_objs/original-18.obj"/>
+			</geometry>
+		</collision>
+	</link>
+	<joint name="joint_5" type="prismatic">
+		<origin xyz="0 0 0"/>
+		<axis xyz="0 0 1"/>
+		<child link="link_5"/>
+		<parent link="link_4"/>
+		<limit lower="0" upper="0.52"/>
+	</joint>
+</robot>
