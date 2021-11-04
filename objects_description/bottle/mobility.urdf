@@ -5,13 +5,13 @@
 		<visual name="lid-9">
 			<origin xyz="-0.002217603744790476 0 -0.003865136729932772"/>
 			<geometry>
-				<mesh filename="package://objects_description/3822/textured_objs/original-2.obj"/>
+				<mesh filename="package://objects_description/bottle/textured_objs/original-2.obj"/>
 			</geometry>
 		</visual>
 		<collision>
 			<origin xyz="-0.002217603744790476 0 -0.003865136729932772"/>
 			<geometry>
-				<mesh filename="package://objects_description/3822/textured_objs/original-2.obj"/>
+				<mesh filename="package://objects_description/bottle/textured_objs/original-2.obj"/>
 			</geometry>
 		</collision>
 	</link>
@@ -25,25 +25,25 @@
 		<visual name="body-7">
 			<origin xyz="0 0 0"/>
 			<geometry>
-				<mesh filename="package://objects_description/3822/textured_objs/new-1.obj"/>
+				<mesh filename="package://objects_description/bottle/textured_objs/new-1.obj"/>
 			</geometry>
 		</visual>
 		<visual name="neck-8">
 			<origin xyz="0 0 0"/>
 			<geometry>
-				<mesh filename="package://objects_description/3822/textured_objs/new-4.obj"/>
+				<mesh filename="package://objects_description/bottle/textured_objs/new-4.obj"/>
 			</geometry>
 		</visual>
 		<collision>
 			<origin xyz="0 0 0"/>
 			<geometry>
-				<mesh filename="package://objects_description/3822/textured_objs/new-1.obj"/>
+				<mesh filename="package://objects_description/bottle/textured_objs/new-1.obj"/>
 			</geometry>
 		</collision>
 		<collision>
 			<origin xyz="0 0 0"/>
 			<geometry>
-				<mesh filename="package://objects_description/3822/textured_objs/new-4.obj"/>
+				<mesh filename="package://objects_description/bottle/textured_objs/new-4.obj"/>
 			</geometry>
 		</collision>
 	</link>
