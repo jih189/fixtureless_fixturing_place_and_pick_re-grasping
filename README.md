@@ -9,12 +9,13 @@ format with the controllers of real Fetch robot, so it will be easy for users to
 System requirement:
 
 1. Ubuntu 18.04
-2. ROS melodic
-3. CoppeliaSim ([Download](https://coppeliarobotics.com/downloads))
-4. CMake 3.16 version ([Download](https://cmake.org/download/))([CMake install tutorial](https://cmake.org/install/))(We use 3.20.1)
-5. ros-melodic-navigation package(sudo apt-get install ros-melodic-navigation)
-6. ros-melodic-joint-trajectory-controller package(sudo apt-get install ros-melodic-joint-trajectory-controller)
-7. ros-melodic-diff-drive-controller package(sudo apt-get install ros-melodic-diff-drive-controller)
+2. python 3.8
+3. ROS melodic
+4. CoppeliaSim ([Download](https://coppeliarobotics.com/downloads))
+5. CMake 3.16 version ([Download](https://cmake.org/download/))([CMake install tutorial](https://cmake.org/install/))(We use 3.20.1)
+6. ros-melodic-navigation package(sudo apt-get install ros-melodic-navigation)
+7. ros-melodic-joint-trajectory-controller package(sudo apt-get install ros-melodic-joint-trajectory-controller)
+8. ros-melodic-diff-drive-controller package(sudo apt-get install ros-melodic-diff-drive-controller)
 
 ### Install Steps
 
