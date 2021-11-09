@@ -1,6 +1,12 @@
 <?xml version="1.0"?>
 <launch>
     <arg name="robot_controller_config_path" default="$(find fetch_coppeliasim)/config/default_controllers.yaml"/>
+    <arg name="add_noise" default="false" />
+
+    <group if="$(arg add_noise)">
+        <!-- stuff that will only be evaluated if add_noise is true -->
+        <node pkg="simkinect" name="depth_noise_adder" type="add_noise_node.py" output="screen" />
+    </group>
 
     <!-- Start controllers -->
     <rosparam file="$(arg robot_controller_config_path)" command="load"/> 
@@ -30,8 +36,10 @@
     <!-- need to rectify the depth image -->
     <node pkg="nodelet" type="nodelet" name="rectify_depth" args="load image_proc/rectify standalone_nodelet --no-bond"
           respawn="true">
-      <remap from="image_mono"  to="/head_camera/depth/image_raw" />
-      <remap from="camera_info" to="/head_camera/depth/camera_info" />
+      <remap from="image_mono"  to="/head_camera/depth/image_raw" unless="$(arg add_noise)"/>
+      <remap from="image_mono"  to="/head_camera/noise_depth/image_raw" if="$(arg add_noise)" />
+      <remap from="camera_info" to="/head_camera/depth/camera_info" unless="$(arg add_noise)"/>
+      <remap from="camera_info" to="/head_camera/noise_depth/camera_info" if="$(arg add_noise)"/>
       <remap from="image_rect"  to="/head_camera/depth/image_rect" />
     </node>
 
