@@ -1,0 +1,10 @@
+this is the instruction of running Fetch robot in the simulation.
+1. roscore 
+2. roslaunch fetch_coppeliasim simulation.launch
+3. roslaunch fetch_coppeliasim fetch_control.launch
+
+run the moveit
+roslaunch fetch_moveit_config move_group.launch
+
+
+
