@@ -114,6 +114,8 @@ def loadEnd_effector_trajectory():
             result.append([a, t])
 
     for a, t in result:
+        if a == "setGripper" or a == "closeGripper":
+            continue
         for e in t:
             e[0][3] /= 1000
             e[1][3] /= 1000
@@ -134,7 +136,7 @@ if __name__=='__main__':
     end_effector_trajectory, visual_end_effector_trajectory = loadEnd_effector_trajectory()
 
     # subsampling the visual trajectory
-    visual_end_effector_trajectory = [visual_end_effector_trajectory[i] for i in range(0, len(visual_end_effector_trajectory), 4)]
+    visual_end_effector_trajectory = [visual_end_effector_trajectory[i] for i in range(0, len(visual_end_effector_trajectory), 10)]
     
     valid_manipulation_points = detect_table_and_placement(robot)
     
@@ -152,13 +154,9 @@ if __name__=='__main__':
             rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
             ## calculate the gripper pose on table
             current_testpoint = testpoint.dot(rotationInZ)
-            
-            current_last_grasp = getTransformFromPoseMat(current_testpoint.dot(np.array(end_effector_trajectory[-1][1][-1])))
-            if robot.solve_ik_collision_free_in_base(current_last_grasp, 30) == None:
-                continue
 
             ik_feasible = True
-            for g in [getTransformFromPoseMat(current_testpoint.dot(np.array(t[0]))) for _, t in end_effector_trajectory]:
+            for g in [getTransformFromPoseMat(current_testpoint.dot(np.array(t))) for t in visual_end_effector_trajectory]:
                 if robot.solve_ik_collision_free_in_base(g, 30) == None:
                     ik_feasible = False
                     break
@@ -176,10 +174,12 @@ if __name__=='__main__':
             totalPlan.append(robot.planto_joints(init_ik_result.state.joint_state.position, init_ik_result.state.joint_state.name))
             path_feasible = True
             for a, t in end_effector_trajectory:
-                if a == 'pivot':
+                if a == 'closeGripper':
                     totalPlan.append(robot.planto_close_gripper())
-                elif a == 'fingerGait':
-                    totalPlan.append(robot.planto_open_gripper())
+                    continue
+                elif a == 'setGripper':
+                    totalPlan.append(robot.planto_open_gripper(t/1000.0))
+                    continue
                 (currentTrajectoryPlan, fraction) = robot.verifyEndEffectorTrajectory(moveit_robot_state, [getTransformFromPoseMat(current_testpoint.dot(np.array(e))) for e in t])
                 if fraction < 0.9:
                     path_feasible = False
@@ -229,8 +229,8 @@ if __name__=='__main__':
         robot.display_trajectory(totalPlan)
 
     while not rospy.is_shutdown():
-        # for i, p in enumerate(valid_manipulation_points):
-        #     tf_helper.pubTransform("pose " + str(i), p)
+        for i, p in enumerate(valid_manipulation_points):
+            tf_helper.pubTransform("pose " + str(i), p)
         marker_publisher.publish(markerArray)
         rospy.sleep(0.5)
         

@@ -593,7 +593,7 @@ class Fetch_Robot():
         self.group.set_end_effector_link(current_endeffector)
         return plan
 
-    def planto_open_gripper(self):
+    def planto_open_gripper(self, value = 0.04):
         joint_state = JointState()
         joint_state.header = Header()
         joint_state.header.stamp = rospy.Time.now()
@@ -602,8 +602,8 @@ class Fetch_Robot():
         moveit_robot_state = RobotState()
         moveit_robot_state.joint_state = joint_state
         self.hand_group.set_start_state(moveit_robot_state)
-        self.hand_group.set_joint_value_target([0.04, 0.04])
-        self.lastHandState = [0.04, 0.04]
+        self.hand_group.set_joint_value_target([value, value])
+        self.lastHandState = [value, value]
         plan = self.hand_group.plan()
         self.hand_group.clear_pose_targets()
         return plan
