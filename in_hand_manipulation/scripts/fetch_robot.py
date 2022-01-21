@@ -199,6 +199,7 @@ class Fetch_Robot():
         self.rotThreshold = rotThreshold
 
     def publishTargetFrame(self):
+        """please use verifyEndEffectorTrajectory instead"""
         while not rospy.is_shutdown():
             rospy.Rate(10).sleep()
             self.targetFrame.header.stamp = rospy.Time()
@@ -253,6 +254,7 @@ class Fetch_Robot():
 
     # this function is used by cartisian motion controller
     def moveToFrame(self, transform, isInBaselink=True):
+        """please use verifyEndEffectorTrajectory instead"""
 
         if isInBaselink: # if is move in base link, then need to convert it to arm base first
             self.tf_listener.waitForTransform(self.armbasename, self.basename, rospy.Time(), rospy.Duration(4.0))

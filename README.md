@@ -45,6 +45,12 @@ source devel/setup.bash
 ### Launch Steps
 1. roslaunch fetch_coppeliasim simulation.Launch
 2. roslaunch fetch_coppeliasim fetch_control.launch
+## Set initial joint values on Fetch
+You are allowed to change the initial joint value of the arm. Following is how you can do it:
+1. Stop the simulation
+2. Select the joint you want to change its value in Scene hierachy
+3. Open its "Scene Object Properties"
+4. set the position value in the "Configuration" section of "Joint" tag.
 ## Scene Building
 There are three ways to import the scene:
 1. Import by .ttt(File->Open Scene...). This will load the scene directly, but we do not have enough .ttt format rooms currently.
