@@ -182,7 +182,6 @@ namespace coppeliasim_ros_control
       if ( simSetObjectInt32Parameter(sim_joints_[j], sim_jointintparam_motor_enabled, 1) == -1  ) 
         ROS_DEBUG_STREAM("can not enable joint motor for joint '"<< joint_names_[j]  << "' " );
 
-
       // init position vs velocity vs effort mode
       switch (joint_control_methods_[j])
       {
@@ -196,8 +195,8 @@ namespace coppeliasim_ros_control
       
 
           // set P, I, D values for the PID position controller  
-          if ( simSetObjectFloatParameter(sim_joints_[j], sim_jointfloatparam_pid_p, 0.5) == -1 ||
-               simSetObjectFloatParameter(sim_joints_[j], sim_jointfloatparam_pid_i, 0.0) == -1 ||
+          if ( simSetObjectFloatParameter(sim_joints_[j], sim_jointfloatparam_pid_p, 0.6) == -1 ||
+               simSetObjectFloatParameter(sim_joints_[j], sim_jointfloatparam_pid_i, 0.05) == -1 ||
                simSetObjectFloatParameter(sim_joints_[j], sim_jointfloatparam_pid_d, 0.0) == -1  )
             ROS_DEBUG_STREAM("can not enable PID position contol loop for joint '"<< joint_names_[j]  << "' " );
         }

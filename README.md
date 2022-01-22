@@ -9,7 +9,7 @@ format with the controllers of real Fetch robot, so it will be easy for users to
 System requirement:
 
 1. Ubuntu 18.04
-2. python 3.8
+2. python 3.8(This is used by CoppeliaSim and not for ROS, so do not set it to be the default python in ROS)
 3. ROS melodic
 4. CoppeliaSim ([Download](https://coppeliarobotics.com/downloads))
 5. CMake 3.16 version ([Download](https://cmake.org/download/))([CMake install tutorial](https://cmake.org/install/))(We use 3.20.1)
