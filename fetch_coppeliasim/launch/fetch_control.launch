@@ -65,4 +65,6 @@
     <!-- diff drive remapper -->
     <node pkg="fetch_coppeliasim" name="remap_diff_drive_controller" type="remap_diff_drive_controller.py" output="screen" />
     
+    <!-- object mover -->
+    <node pkg="fetch_coppeliasim" name="object_mover" type="objectMover.py" output="screen" />
 </launch>
