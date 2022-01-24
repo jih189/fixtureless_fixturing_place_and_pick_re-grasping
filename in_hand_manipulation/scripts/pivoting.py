@@ -1,14 +1,10 @@
 #!/usr/bin/env python
-import os
 import rospy
 from fetch_robot import Fetch_Robot
-from geometry_msgs.msg import Pose2D
-from panda3d.bullet import BulletDebugNode
 from tf_util import  TF_Helper, getMatrixFromQuaternionAndTrans, getTransformFromPoseMat
 from rail_segmentation.srv import SearchTable
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-import pandaplotutils.pandageom as pandageom
 from sensor_msgs.msg import PointCloud2
 import sensor_msgs.point_cloud2 as pc2
 import matplotlib.pyplot as plt
@@ -19,6 +15,9 @@ from visualization_msgs.msg import MarkerArray
 import copy
 from moveit_msgs.msg import RobotState
 from moveit_msgs.msg import RobotTrajectory
+
+from geometry_msgs.msg import Pose
+from fetch_coppeliasim.srv import ObjectPose
 
 def detect_table_and_placement(robot_, numberOfSampling = 20, sizeOfTable2d = 500):
     """
@@ -105,6 +104,7 @@ def loadEnd_effector_trajectory():
         data = json.load(json_file)
 
     result = [[data[0][0], data[0][1]]]
+    # last_action = result[0][0]
     visual_result = []
     
     for a, t in data[1:]:
@@ -122,7 +122,12 @@ def loadEnd_effector_trajectory():
             e[2][3] /= 1000
             visual_result.append(e)
 
-    return result, visual_result
+    with open('actionqueue/grasp_json_data.json') as json_file:
+        grasp_data = json.load(json_file)
+        grasp_data[0][3] /= 1000
+        grasp_data[1][3] /= 1000
+        grasp_data[2][3] /= 1000
+    return result, visual_result, grasp_data
 
 if __name__=='__main__':
 
@@ -132,12 +137,19 @@ if __name__=='__main__':
     robot = Fetch_Robot(sim=isSim)
     tf_helper = TF_Helper()
 
+    # if running in simulation, we can have a object mover helping us
+    objectMover = None
+    if isSim:
+        rospy.wait_for_service('move_object')
+        objectMover = rospy.ServiceProxy('move_object', ObjectPose)
+
     # load json trajectory
-    end_effector_trajectory, visual_end_effector_trajectory = loadEnd_effector_trajectory()
+    end_effector_trajectory, visual_end_effector_trajectory, object_grasp = loadEnd_effector_trajectory()
 
     # subsampling the visual trajectory
     visual_end_effector_trajectory = [visual_end_effector_trajectory[i] for i in range(0, len(visual_end_effector_trajectory), 10)]
     
+    # find a set of valid position on table for manipulation
     valid_manipulation_points = detect_table_and_placement(robot)
     
     marker_publisher = rospy.Publisher("trajectory_marker", MarkerArray, queue_size=10)
@@ -146,6 +158,7 @@ if __name__=='__main__':
     init_ik_result = None
     found_result = False
     current_init_grasp = None
+    desired_object_trans_in_base = None
     totalPlan = []
     for p in valid_manipulation_points:
         testpoint = getMatrixFromQuaternionAndTrans(p[1], p[0])
@@ -170,21 +183,21 @@ if __name__=='__main__':
             moveit_robot_state = copy.deepcopy(init_ik_result.state)
             # start with move to initial position
             totalPlan = []
-            totalPlan.append(robot.planto_open_gripper())
-            totalPlan.append(robot.planto_joints(init_ik_result.state.joint_state.position, init_ik_result.state.joint_state.name))
+            totalPlan.append(("gripper", robot.planto_open_gripper(), 0.08))
+            totalPlan.append(("arm", robot.planto_joints(init_ik_result.state.joint_state.position, init_ik_result.state.joint_state.name)))
             path_feasible = True
             for a, t in end_effector_trajectory:
                 if a == 'closeGripper':
-                    totalPlan.append(robot.planto_close_gripper())
+                    totalPlan.append(("gripper", robot.planto_close_gripper(), 0.0))
                     continue
                 elif a == 'setGripper':
-                    totalPlan.append(robot.planto_open_gripper(t/1000.0))
+                    totalPlan.append(("gripper", robot.planto_open_gripper(t/1000.0), t/1000.0))
                     continue
                 (currentTrajectoryPlan, fraction) = robot.verifyEndEffectorTrajectory(moveit_robot_state, [getTransformFromPoseMat(current_testpoint.dot(np.array(e))) for e in t])
                 if fraction < 0.9:
                     path_feasible = False
                     break
-                totalPlan.append(currentTrajectoryPlan)
+                totalPlan.append(("arm", currentTrajectoryPlan))
                 moveit_robot_state.joint_state.position = copy.deepcopy(currentTrajectoryPlan.joint_trajectory.points[-1].positions)
                 moveit_robot_state.joint_state.velocity = copy.deepcopy(currentTrajectoryPlan.joint_trajectory.points[-1].velocities)
                 moveit_robot_state.joint_state.effort = copy.deepcopy(currentTrajectoryPlan.joint_trajectory.points[-1].effort)
@@ -226,11 +239,53 @@ if __name__=='__main__':
         print("there is no ik result")
     else:
         print("found solution")
-        robot.display_trajectory(totalPlan)
+        robot.display_trajectory([p[1] for p in totalPlan])
 
-    while not rospy.is_shutdown():
-        for i, p in enumerate(valid_manipulation_points):
-            tf_helper.pubTransform("pose " + str(i), p)
-        marker_publisher.publish(markerArray)
-        rospy.sleep(0.5)
+        raw_input("execute plan")
+
+        for p in totalPlan[:2]:
+            if p[0] == "gripper":
+                robot.setGripperWidth(p[2])
+            elif p[0] == "arm":
+                robot.execute_plan(p[1])
+
+        if isSim:
+            # it is in Sim, then we can move the object to the position where the robot can grasp
+            # get the transform from world to baselink
+            world_to_base_mat = tf_helper.getPoseMat("world", "base_link")
+
+            desired_object_pose_mat_in_base = getMatrixFromQuaternionAndTrans(current_init_grasp[1], current_init_grasp[0]).dot(np.linalg.inv(np.array(object_grasp)))
+            desired_object_trans_in_base = getTransformFromPoseMat(desired_object_pose_mat_in_base)
+            desired_object_trans = getTransformFromPoseMat(world_to_base_mat.dot(desired_object_pose_mat_in_base))
+
+            # move the object to where the robot can grasp
+            try:
+                object_pose = Pose()
+                object_pose.position.x = desired_object_trans[0][0]
+                object_pose.position.y = desired_object_trans[0][1]
+                object_pose.position.z = desired_object_trans[0][2]
+
+                object_pose.orientation.x = desired_object_trans[1][0]
+                object_pose.orientation.y = desired_object_trans[1][1]
+                object_pose.orientation.z = desired_object_trans[1][2]
+                object_pose.orientation.w = desired_object_trans[1][3]
+
+                objectMover("bottle", object_pose)
+            except rospy.ServiceException as exc:
+                print("Service did not process request: " + str(exc))
+                exit()
+    
+        raw_input("ready to pivot")
+        # execute the actions
+        for p in totalPlan[2:]:
+            if p[0] == "gripper":
+                robot.setGripperWidth(p[2])
+            elif p[0] == "arm":
+                robot.execute_plan(p[1])
+
+    # while not rospy.is_shutdown():
+    #     for i, p in enumerate(valid_manipulation_points):
+    #         tf_helper.pubTransform("pose " + str(i), p)
+    #     marker_publisher.publish(markerArray)
+    #     rospy.sleep(0.5)
         
