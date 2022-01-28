@@ -12,9 +12,7 @@ if __name__=='__main__':
 
     rospy.init_node('test_node')
     robot = Fetch_Robot(sim=True)
-    tf_helper = TF_Helper()
-
-    plan = robot.planto_open_gripper()
-    robot.display_trajectory([plan])
-    robot.openGripper()
-
+    
+    # joint_limits = [robot.get_joint_limit(name) for name in robot.group.get_active_joints()]
+    # print(joint_limits)
+    print(robot.group.get_path_constraints())

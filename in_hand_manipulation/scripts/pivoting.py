@@ -18,8 +18,10 @@ from moveit_msgs.msg import RobotTrajectory
 
 from geometry_msgs.msg import Pose
 from fetch_coppeliasim.srv import ObjectPose
+from itertools import compress
+import time
 
-def detect_table_and_placement(robot_, numberOfSampling = 20, sizeOfTable2d = 500):
+def detect_table_and_placement(robot_, numberOfSampling = 50, sizeOfTable2d = 500):
     """
     Search for a table surface and sampling a set of position on the table for manipulation.
     """
@@ -75,7 +77,7 @@ def detect_table_and_placement(robot_, numberOfSampling = 20, sizeOfTable2d = 50
         mask = dist_from_center <= radius
         return mask
 
-    circlesize = 70
+    circlesize = 50
 
     temp = np.zeros((circlesize, circlesize))
     temp[create_circular_mask(circlesize, circlesize)] = 1
@@ -127,6 +129,10 @@ def loadEnd_effector_trajectory():
         grasp_data[0][3] /= 1000
         grasp_data[1][3] /= 1000
         grasp_data[2][3] /= 1000
+
+    # subsampling the visual trajectory
+    visual_result = [visual_result[i] for i in range(0, len(visual_result), 15)]
+
     return result, visual_result, grasp_data
 
 if __name__=='__main__':
@@ -135,6 +141,7 @@ if __name__=='__main__':
 
     rospy.init_node('pivoting_node')
     robot = Fetch_Robot(sim=isSim)
+
     tf_helper = TF_Helper()
 
     # if running in simulation, we can have a object mover helping us
@@ -146,9 +153,6 @@ if __name__=='__main__':
     # load json trajectory
     end_effector_trajectory, visual_end_effector_trajectory, object_grasp = loadEnd_effector_trajectory()
 
-    # subsampling the visual trajectory
-    visual_end_effector_trajectory = [visual_end_effector_trajectory[i] for i in range(0, len(visual_end_effector_trajectory), 10)]
-    
     # find a set of valid position on table for manipulation
     valid_manipulation_points = detect_table_and_placement(robot)
     
@@ -156,18 +160,19 @@ if __name__=='__main__':
 
     markerArray = MarkerArray()
     init_ik_result = None
-    found_result = False
     current_init_grasp = None
     desired_object_trans_in_base = None
+    found_solution = False
     totalPlan = []
     for p in valid_manipulation_points:
         testpoint = getMatrixFromQuaternionAndTrans(p[1], p[0])
-        for tableangle in [0.0, 0.7853975, 1.570795, 2.3561925, 3.14159, 3.9269875, 4.712385, 5.4977825]:
+        for tableangle in [0.0, 0.5235987755982988, 1.0471975511965976, 1.5707963267948966, 2.0943951023931953, 2.617993877991494, 3.141592653589793, 3.665191429188092, 4.1887902047863905, 4.71238898038469, 5.235987755982988, 5.759586531581287]:
             rotationInZ = np.identity(4)
             rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
             ## calculate the gripper pose on table
             current_testpoint = testpoint.dot(rotationInZ)
 
+            # check the ik feasibility of the trajectory
             ik_feasible = True
             for g in [getTransformFromPoseMat(current_testpoint.dot(np.array(t))) for t in visual_end_effector_trajectory]:
                 if robot.solve_ik_collision_free_in_base(g, 30) == None:
@@ -180,12 +185,19 @@ if __name__=='__main__':
             current_init_grasp = getTransformFromPoseMat(current_testpoint.dot(np.array(end_effector_trajectory[0][1][0])))
             init_ik_result = robot.solve_ik_collision_free_in_base(current_init_grasp, 30)
 
+            if init_ik_result == None:
+                continue
+
             moveit_robot_state = copy.deepcopy(init_ik_result.state)
+
             # start with move to initial position
             totalPlan = []
             totalPlan.append(("gripper", robot.planto_open_gripper(), 0.08))
             totalPlan.append(("arm", robot.planto_joints(init_ik_result.state.joint_state.position, init_ik_result.state.joint_state.name)))
+
             path_feasible = True
+            minJointDis = 3.14
+
             for a, t in end_effector_trajectory:
                 if a == 'closeGripper':
                     totalPlan.append(("gripper", robot.planto_close_gripper(), 0.0))
@@ -193,55 +205,69 @@ if __name__=='__main__':
                 elif a == 'setGripper':
                     totalPlan.append(("gripper", robot.planto_open_gripper(t/1000.0), t/1000.0))
                     continue
+
                 (currentTrajectoryPlan, fraction) = robot.verifyEndEffectorTrajectory(moveit_robot_state, [getTransformFromPoseMat(current_testpoint.dot(np.array(e))) for e in t])
-                if fraction < 0.9:
+                if fraction != 1.0:
                     path_feasible = False
                     break
+                # need to ensure the joint will not get close to the joint limits or be outsidef of joint constraints
+                joint_limits = [robot.get_joint_limit(name) for name in currentTrajectoryPlan.joint_trajectory.joint_names]
+
+                for point in currentTrajectoryPlan.joint_trajectory.points:
+                    distanceToLimits = min([min(point.positions[ind] - joint_limits[ind][0], joint_limits[ind][1] - point.positions[ind]) for ind in range(len(joint_limits))])
+
+                    if minJointDis > distanceToLimits:
+                        minJointDis = distanceToLimits
+
                 totalPlan.append(("arm", currentTrajectoryPlan))
                 moveit_robot_state.joint_state.position = copy.deepcopy(currentTrajectoryPlan.joint_trajectory.points[-1].positions)
                 moveit_robot_state.joint_state.velocity = copy.deepcopy(currentTrajectoryPlan.joint_trajectory.points[-1].velocities)
                 moveit_robot_state.joint_state.effort = copy.deepcopy(currentTrajectoryPlan.joint_trajectory.points[-1].effort)
-            if not path_feasible:
+            
+            if not path_feasible or minJointDis < 0.1: # if path is not feasible, then ignore this path
                 continue
 
+            found_solution = True
+
+            # print("the closest joint distance to joint limit of current trajectory = ", minJointDis)
             
-            for id, e in enumerate(visual_end_effector_trajectory):
-                current_grasp_trans, current_grasp_rot = getTransformFromPoseMat(current_testpoint.dot(np.array(e)))
+            # visualize the end-effector trajectory
+            # for id, e in enumerate(visual_end_effector_trajectory):
+            #     current_grasp_trans, current_grasp_rot = getTransformFromPoseMat(current_testpoint.dot(np.array(e)))
 
-                marker = Marker()
-                marker.id = id
-                marker.header.frame_id = "/base_link"
-                marker.type = marker.SPHERE
-                marker.action = marker.ADD
-                marker.scale.x = 0.02
-                marker.scale.y = 0.02
-                marker.scale.z = 0.02
-                marker.color.a = 1.0
-                marker.color.r = 1.0
-                marker.color.g = 1.0
-                marker.color.b = 0.0
-                marker.pose.orientation.x = current_grasp_rot[0]
-                marker.pose.orientation.y = current_grasp_rot[1]
-                marker.pose.orientation.z = current_grasp_rot[2]
-                marker.pose.orientation.w = current_grasp_rot[3]
-                marker.pose.position.x = current_grasp_trans[0]
-                marker.pose.position.y = current_grasp_trans[1]
-                marker.pose.position.z = current_grasp_trans[2]
+            #     marker = Marker()
+            #     marker.id = id
+            #     marker.header.frame_id = "/base_link"
+            #     marker.type = marker.SPHERE
+            #     marker.action = marker.ADD
+            #     marker.scale.x = 0.02
+            #     marker.scale.y = 0.02
+            #     marker.scale.z = 0.02
+            #     marker.color.a = 1.0
+            #     marker.color.r = 1.0
+            #     marker.color.g = 1.0
+            #     marker.color.b = 0.0
+            #     marker.pose.orientation.x = current_grasp_rot[0]
+            #     marker.pose.orientation.y = current_grasp_rot[1]
+            #     marker.pose.orientation.z = current_grasp_rot[2]
+            #     marker.pose.orientation.w = current_grasp_rot[3]
+            #     marker.pose.position.x = current_grasp_trans[0]
+            #     marker.pose.position.y = current_grasp_trans[1]
+            #     marker.pose.position.z = current_grasp_trans[2]
 
-                markerArray.markers.append(marker)
+            #     markerArray.markers.append(marker)
 
-            found_result = True
             break
-        if found_result:
+        if found_solution:
             break
 
-    if not found_result:
+    if not found_solution:
         print("there is no ik result")
     else:
         print("found solution")
-        robot.display_trajectory([p[1] for p in totalPlan])
+        # robot.display_trajectory([p[1] for p in totalPlan])
 
-        raw_input("execute plan")
+        # raw_input("execute plan")
 
         for p in totalPlan[:2]:
             if p[0] == "gripper":
@@ -250,7 +276,7 @@ if __name__=='__main__':
                 robot.execute_plan(p[1])
 
         if isSim:
-            # it is in Sim, then we can move the object to the position where the robot can grasp
+            # if it is in Sim, then we can move the object to the position where the robot can grasp
             # get the transform from world to baselink
             world_to_base_mat = tf_helper.getPoseMat("world", "base_link")
 
@@ -276,12 +302,31 @@ if __name__=='__main__':
                 exit()
     
         raw_input("ready to pivot")
+
         # execute the actions
         for p in totalPlan[2:]:
             if p[0] == "gripper":
                 robot.setGripperWidth(p[2])
             elif p[0] == "arm":
-                robot.execute_plan(p[1])
+                # # remove duplicated time from start
+                # determinelist = [(p[1].joint_trajectory.points[i+1].time_from_start - p[1].joint_trajectory.points[i].time_from_start) == rospy.Duration(0) for i in range(len(p[1].joint_trajectory.points) - 1)]
+                # determinelist = [True] + determinelist
+                # p[1].joint_trajectory.points = list(compress(p[1].joint_trajectory.points, determinelist))
+
+                for i in range(len(p[1].joint_trajectory.points) - 1):
+                    if (p[1].joint_trajectory.points[i+1].time_from_start - p[1].joint_trajectory.points[i].time_from_start) == rospy.Duration(0):
+                        p[1].joint_trajectory.points[i+1].time_from_start += rospy.Duration(secs=0, nsecs=10000)
+
+                joint_error = robot.execute_plan(p[1])
+                if joint_error > 1.0:
+                    for i in range(len(p[1].joint_trajectory.points) - 1):
+                        difftime = p[1].joint_trajectory.points[i+1].time_from_start - p[1].joint_trajectory.points[i].time_from_start
+                        print(difftime, difftime==rospy.Duration(0))
+                        if difftime==rospy.Duration(0):
+                            print("---", p[1].joint_trajectory.points[i].time_from_start + difftime / 2)
+                    # # print the error trajectory
+                    print("something is wrong")
+                    break
 
     # while not rospy.is_shutdown():
     #     for i, p in enumerate(valid_manipulation_points):

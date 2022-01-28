@@ -25,6 +25,7 @@
   <arg name="jiggle_fraction" default="0.05" />
   <arg name="publish_monitored_planning_scene" default="true"/>
   <arg name="pipeline" default="$(optenv PLANNING_PIPELINE ompl)" />
+  <!-- <arg name="pipeline" default="chomp" /> -->
 
   <!-- Planning Functionality -->
   <include ns="move_group" file="$(find fetch_moveit_config)/launch/planning_pipeline.launch.xml">

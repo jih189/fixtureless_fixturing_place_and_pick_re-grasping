@@ -12,8 +12,12 @@
 
 import numpy as np
 import rospy
+import actionlib
 from std_msgs.msg import Float64
-from fetch_coppeliasim.srv import ObjectPose, ObjectPoseResponse
+from fetch_coppeliasim.srv import ObjectPose, ObjectPoseResponse, ResetRobot, ResetRobotResponse
+from control_msgs.msg import JointTrajectoryAction, JointTrajectoryGoal, FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from std_msgs.msg import Empty
 import tf
 
 try:
@@ -27,12 +31,81 @@ except:
     print ('--------------------------------------------------------------')
     print ('')
 
+class Arm:
+    def __init__(self):
+        self.joint_names = ['shoulder_pan_joint', 'shoulder_lift_joint', 'upperarm_roll_joint', 'elbow_flex_joint', 'forearm_roll_joint', 'wrist_flex_joint', 'wrist_roll_joint']
+        self.client = actionlib.SimpleActionClient("/arm_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
+        self.init_position = [-1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+        rospy.loginfo('Waiting for joint trajectory action')    
+        self.client.wait_for_server()
+        rospy.loginfo('Found joint trajectory action!')
+
+    def reset(self):
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.joint_names = self.joint_names
+        point = JointTrajectoryPoint()
+        # point.velocities.append(0.1)
+        point.positions = self.init_position
+        point.time_from_start = rospy.Duration(3)
+        goal.trajectory.points.append(point)
+        self.client.send_goal_and_wait(goal)
+
+    def move(self, joints):
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.joint_names = self.joint_names
+        point = JointTrajectoryPoint()
+        point.positions = joints
+        point.time_from_start = rospy.Duration(1)
+        goal.trajectory.points.append(point)
+        self.client.send_goal_and_wait(goal)
+
+class Gripper:
+    def __init__(self):
+        self.joint_names = ['r_gripper_finger_joint']
+        self.open_joints = [0.04]
+        self.close_joints = [-0.04]
+        self.client = actionlib.SimpleActionClient("/gripper_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
+
+        rospy.loginfo('Waiting for joint trajectory action')    
+        self.client.wait_for_server()
+        rospy.loginfo('Found joint trajectory action!')
+
+    def open(self):
+
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.joint_names = self.joint_names
+        point = JointTrajectoryPoint()
+        point.positions = self.open_joints
+        point.time_from_start = rospy.Duration(1)
+        goal.trajectory.points.append(point)
+        self.client.send_goal_and_wait(goal)
+    
+    def close(self):
+
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.joint_names = self.joint_names
+        point = JointTrajectoryPoint()
+        point.positions = self.close_joints
+        point.time_from_start = rospy.Duration(1)
+        goal.trajectory.points.append(point)
+        self.client.send_goal_and_wait(goal)
+
 class SimObjectMover(object):
-    def __init__(self, clientId_):
+    def __init__(self, clientId_, arm_, gripper_):
         self.clientId = clientId_
+        self.arm = arm_
+        self.gripper  = gripper_
         s = rospy.Service('move_object', ObjectPose, self.MoveObjectHandler)
+        robot_s = rospy.Service('reset_robot', ResetRobot, self.resetRobot)
         rospy.loginfo("object mover in sim is ready!!")
         rospy.spin()
+
+    def resetRobot(self, req):
+        print("reset robot")
+        self.arm.reset()
+        self.gripper.open()
+        return ResetRobotResponse()
 
     def getMatrixFromQuaternionAndTrans(self, trans_array, quaternion_array):
         poseMatrix = np.array(tf.transformations.quaternion_matrix(quaternion_array))
@@ -85,10 +158,13 @@ class SimObjectMover(object):
 if __name__ == "__main__":
     rospy.init_node('sim_object_server')
 
+    arm = Arm()
+    gripper = Gripper()
+
     sim.simxFinish(-1) # just in case, close all opened connections
     clientID=sim.simxStart('127.0.0.1',19999,True,True,5000,5) # Connect to CoppeliaSim
     if clientID!=-1:
-        server = SimObjectMover(clientID)
+        server = SimObjectMover(clientID, arm, gripper)
         # Now close the connection to CoppeliaSim:
         sim.simxFinish(clientID)
     else:

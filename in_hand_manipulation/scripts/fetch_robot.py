@@ -7,6 +7,8 @@ from std_msgs.msg import Header
 import moveit_msgs.msg
 from moveit_msgs.msg import RobotState
 from moveit_msgs.srv import GetStateValidity, GetStateValidityRequest
+from moveit_msgs.msg import JointConstraint
+from moveit_msgs.msg import Constraints
 
 from geometry_msgs.msg import Pose, PoseStamped, TwistStamped
 import copy
@@ -80,6 +82,7 @@ class Fetch_Robot():
 
         self.group_names = self.robot.get_group_names()
         print "=========== Robot Groups:", self.group_names
+        
 
         self.collision_object_pub = rospy.Publisher('/collision_object', moveit_msgs.msg.CollisionObject, queue_size=10)
 
@@ -105,6 +108,23 @@ class Fetch_Robot():
         self.state_valid_service = rospy.ServiceProxy('check_state_validity', GetStateValidity)
 
         self.lastHandState = self.hand_group.get_current_joint_values()
+
+        # initialize a joint constraints for avoiding too close to joint limits
+        self.cons = Constraints()
+        self.cons.name = ""
+        for joint_name in self.group.get_active_joints():
+            joint_range = self.get_joint_limit(joint_name)
+            tolerance = (joint_range[1] - joint_range[0])/2
+            jc = JointConstraint()
+            jc.joint_name = joint_name
+            jc.position = joint_range[0] + tolerance
+            jc.tolerance_above = tolerance * 0.9
+            jc.tolerance_below = tolerance * 0.9
+            jc.weight = 1.0
+            self.cons.joint_constraints.append(jc)
+
+    def get_joint_limit(self, joint_name):
+        return self.robot.get_joint(joint_name).bounds()
 
     def generate_seed_state(self, numOfJoints):
         result = []
@@ -134,6 +154,14 @@ class Fetch_Robot():
             current_robot_state.joint_state.header.stamp = rospy.Time.now()
             current_robot_state.joint_state.position = joint_values
             current_robot_state.joint_state.name = self.ik_solver.joint_names
+
+            # need to check whether the joint is not out of joint limits
+            joint_limits = [self.get_joint_limit(name) for name in self.ik_solver.joint_names]
+            distanceToLimits = min([min(joint_values[ind] - joint_limits[ind][0], joint_limits[ind][1] - joint_values[ind]) for ind in range(len(joint_limits))])
+            
+            # ik solver may return a joint state which is out of joint limits
+            if distanceToLimits < 0.1:
+                continue
 
             if self.is_state_valid(current_robot_state):
                 robot_joint_state.state = current_robot_state
@@ -564,7 +592,10 @@ class Fetch_Robot():
         
         # set start state
         self.group.set_start_state(initial_robot_state)
-        (plan, fraction) = self.group.compute_cartesian_path(waypoints, 0.001, 0)
+
+        (plan, fraction) = self.group.compute_cartesian_path(waypoints, 0.002, 0, True, self.cons)
+
+        self.group.clear_path_constraints()
         # reset the start state
         self.group.set_start_state_to_current_state()
         self.group.clear_pose_targets()
@@ -630,14 +661,35 @@ class Fetch_Robot():
             self.group.set_joint_value_target(joints)
         else:
             self.group.set_joint_value_target(dict(zip(names, joints)))
+
         plan = self.group.plan()
         self.group.clear_pose_targets()
         return plan
 
     def execute_plan(self, plan):
         self.group.stop()
-        self.group.execute(plan)
+        # plan=self.group.retime_trajectory(self.robot.get_current_state(), plan, 1.0)
+        # print("execute ----------------------------------")
+        # print(plan.joint_trajectory.joint_names)
+        # print(plan.joint_trajectory.points[-1].positions)
+
+        # lasttime = plan.joint_trajectory.points[0].time_from_start
+        # for pt in plan.joint_trajectory.points[1:]:
+        #     if pt.time_from_start == lasttime:
+        #         print("something is wrong")
+        #     lasttime = pt.time_from_start
+        
+        self.group.execute(plan, wait=True)
+
+        printlist = []
+        for name in plan.joint_trajectory.joint_names:
+            listindex = self.robot.get_current_state().joint_state.name.index(name)
+            printlist.append(self.robot.get_current_state().joint_state.position[listindex])
+        # print(printlist)
+        diff = np.linalg.norm(np.array(plan.joint_trajectory.points[-1].positions) - np.array(printlist))
+
         self.group.clear_pose_targets()
+        return diff
 
     def planto_poses(self, poses):
         current_endeffector = self.group.get_end_effector_link()

@@ -52,7 +52,7 @@ class Arm:
     def __init__(self):
         self.joint_names = ['shoulder_pan_joint', 'shoulder_lift_joint', 'upperarm_roll_joint', 'elbow_flex_joint', 'forearm_roll_joint', 'wrist_flex_joint', 'wrist_roll_joint']
         self.client = actionlib.SimpleActionClient("/arm_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
-        self.init_position = [1.57, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self.init_position = [1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
         rospy.loginfo('Waiting for joint trajectory action')    
         self.client.wait_for_server()
@@ -111,28 +111,8 @@ class Gripper:
         self.client.wait_for_server()
         rospy.loginfo('Found joint trajectory action!')
 
-    # def getFingerValue(self):
-    #     if not rospy.is_shutdown():
-    #         js = rospy.wait_for_message('joint_states', JointState)
-    #         # get index of finger
-    #         index = js.name.index('r_gripper_finger_joint')
-    #         return js.position[index]
-    #     else:
-    #         return None
-
     def open(self):
-        # pt = JointTrajectoryPoint()
-        # pt.positions = [0.04]
-        # pt.time_from_start = rospy.Duration(1.0)
-        # self.traj.points = [pt]
 
-        # r = rospy.Rate(10)
-        # while not rospy.is_shutdown():
-        #     self.traj.header.stamp = rospy.Time.now()
-        #     self.gripper_publisher.publish(self.traj)
-        #     r.sleep()
-        #     if self.getFingerValue() > 0.036:
-        #         break
         goal = FollowJointTrajectoryGoal()
         goal.trajectory.joint_names = self.joint_names
         point = JointTrajectoryPoint()
@@ -142,27 +122,7 @@ class Gripper:
         self.client.send_goal_and_wait(goal)
     
     def close(self):
-        # pt = JointTrajectoryPoint()
-        # pt.positions = [-0.04]
-        # pt.time_from_start = rospy.Duration(1.0)
-        # self.traj.points = [pt]
 
-        # r = rospy.Rate(10)
-        # last_value = self.getFingerValue()
-        # stablenum = 0
-        # while not rospy.is_shutdown():
-        #     self.traj.header.stamp = rospy.Time.now()
-        #     self.gripper_publisher.publish(self.traj)
-        #     r.sleep()
-        #     # print "error ", abs(last_value - self.getFingerValue()) 
-        #     if abs(last_value - self.getFingerValue()) < 0.0001:
-        #         stablenum+=1
-        #     else:
-        #         stablenum = 0
-        #     if stablenum == 5 or abs(pt.positions[0] - self.getFingerValue()) < 0.0001:
-        #         break
-        #     last_value = self.getFingerValue()
-        # return last_value
         goal = FollowJointTrajectoryGoal()
         goal.trajectory.joint_names = self.joint_names
         point = JointTrajectoryPoint()
@@ -172,26 +132,11 @@ class Gripper:
         self.client.send_goal_and_wait(goal)
 
 def resetEnv(clientID, arm, gripper, torso):
-
-    torso.reset()
-    # move the robot (need to search how to do)
-    # moveObjectTo(clientID, "base_link_respondable", [-0.011241, -0.65001, 0.18444], [-9.568027599016204e-05, -0.7104805111885071, 0.003217362565919757, 0.7037094831466675])
-
-    # move table away
-    moveObjectTo(clientID, "Table", [1.526, -1.3749, 0.3944], [0.5,0.5,0.5,-0.5]) # it was [-0.025, 0.5, 0.35]
-    moveObjectTo(clientID, "cup", [0.7768, 2.093, 0.8338], [0.5, 0.5, 0.5, 0.5]) # it was [0.021, 0.463, 0.7775]
-    moveObjectTo(clientID, "book", [0.65, 2.093, 0.8338], [0.5, 0.5, 0.5, 0.5])
-    moveObjectTo(clientID, "almonds_can", [0.4, 2.093, 0.8338], [0.5, 0.5, 0.5, 0.5])
     
-    arm.reset()
-    gripper.open()
-
-    moveObjectTo(clientID, "Table", [0.77, 0.075, 0.3946], [0.5,0.5,0.5,-0.5]) # it was [-0.025, 0.5, 0.35]
-    moveObjectTo(clientID, "cup", [0.79, 0.2, 0.8538], [0.5,0.5, 0.5,0.5]) # it was [0.021, 0.463, 0.7775]
-    moveObjectTo(clientID, "book", [0.79, 0.2, 0.94], [0.5, 0.5, 0.5, 0.5]) 
-    # moveObjectTo(clientID, "almonds_can", [0.79, 0.2, 0.97], [0.5, 0.5, 0.5, 0.5]) 
-
-    # gripper.close()
+    moveObjectTo(clientID, "bottle_respondable", [-1.1507, 0.17481, 0.65546], [0.0, 0.0, 0.0, 1.0])
+    
+    # arm.reset()
+    # gripper.open()
 
 
 if __name__ == "__main__":
