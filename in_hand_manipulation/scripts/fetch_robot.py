@@ -7,6 +7,7 @@ from std_msgs.msg import Header
 import moveit_msgs.msg
 from moveit_msgs.msg import RobotState
 from moveit_msgs.srv import GetStateValidity, GetStateValidityRequest
+from moveit_msgs.srv import GetPositionFK, GetPositionFKRequest, GetPositionFKResponse
 from moveit_msgs.msg import JointConstraint
 from moveit_msgs.msg import Constraints
 
@@ -16,7 +17,7 @@ from controller_manager_msgs.srv import SwitchController, ListControllers
 import threading
 from rospy.core import is_shutdown
 import tf
-from tf_util import transformProduct
+from tf_util import transformProduct, adjointRepresentationMatrix
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import math
@@ -59,6 +60,8 @@ class Fetch_Robot():
             self.gripper_client = actionlib.SimpleActionClient("/gripper_controller/gripper_action", GripperCommandAction)
             self.cartesian_motion_controller_publisher = rospy.Publisher('/arm_controller/cartesian_twist/command', TwistStamped, queue_size=10)
 
+        self.group.set_max_velocity_scaling_factor(0.8)
+        self.hand_group.set_max_velocity_scaling_factor(0.8)
 
 
         self.joint_names = ['r_gripper_finger_joint']
@@ -107,6 +110,9 @@ class Fetch_Robot():
         rospy.wait_for_service("check_state_validity")
         self.state_valid_service = rospy.ServiceProxy('check_state_validity', GetStateValidity)
 
+        self.fk_srv = rospy.ServiceProxy('/compute_fk', GetPositionFK)
+        self.fk_srv.wait_for_service()
+
         self.lastHandState = self.hand_group.get_current_joint_values()
 
         # initialize a joint constraints for avoiding too close to joint limits
@@ -118,13 +124,43 @@ class Fetch_Robot():
             jc = JointConstraint()
             jc.joint_name = joint_name
             jc.position = joint_range[0] + tolerance
-            jc.tolerance_above = tolerance * 0.9
-            jc.tolerance_below = tolerance * 0.9
+            jc.tolerance_above = tolerance * 0.87
+            jc.tolerance_below = tolerance * 0.87
             jc.weight = 1.0
             self.cons.joint_constraints.append(jc)
 
+    def get_fk(self, desired_robot_state, link_name):
+        """
+        Given a dict of joint and its name, we can get transform of select link
+        """
+        current_robot_state = self.robot.get_current_state()
+        temp_robot_state = list(current_robot_state.joint_state.position)
+
+        for jn in desired_robot_state:
+            ind = current_robot_state.joint_state.name.index(jn)
+            temp_robot_state[ind] = desired_robot_state[jn]
+        current_robot_state.joint_state.position = tuple(temp_robot_state)
+
+        req = GetPositionFKRequest()
+        req.header.frame_id = "base_link"
+        req.fk_link_names = [link_name]
+        req.robot_state = current_robot_state
+        resp = self.fk_srv.call(req)
+
+        return [[resp.pose_stamped[0].pose.orientation.x, resp.pose_stamped[0].pose.orientation.y, resp.pose_stamped[0].pose.orientation.z, resp.pose_stamped[0].pose.orientation.w], 
+                                    [resp.pose_stamped[0].pose.position.x, resp.pose_stamped[0].pose.position.y, resp.pose_stamped[0].pose.position.z]]
+
     def get_joint_limit(self, joint_name):
         return self.robot.get_joint(joint_name).bounds()
+
+    def get_mom(self, joints):
+        # return the measure of manipulability of given joints
+        Jacobian_matrix = self.group.get_jacobian_matrix(joints)
+        return np.sqrt(np.trace(np.linalg.cholesky(Jacobian_matrix.dot(np.transpose(Jacobian_matrix))))) 
+        
+
+    def get_jacobian_matrix(self, joints):
+        return self.group.get_jacobian_matrix(joints)
 
     def generate_seed_state(self, numOfJoints):
         result = []
@@ -132,40 +168,47 @@ class Fetch_Robot():
             result.append(random.uniform(-3.14, 3.14))
         return result
 
-    def solve_ik_collision_free_in_base(self, transform, numOfAttempt):
+    def solve_ik_collision_free_in_base(self, transform, numOfAttempt, seed_state = None):
         # find the transform from arm base to the base link
         self.tf_listener.waitForTransform(self.armbasename, self.basename, rospy.Time(), rospy.Duration(4.0))
         base_link_in_torso_link_transform = self.tf_listener.lookupTransform(self.armbasename, self.basename, rospy.Time())
 
-        return self.solve_ik_collision_free(transformProduct(base_link_in_torso_link_transform, transform), numOfAttempt)
 
-    def solve_ik_collision_free(self, transform, numOfAttempt):
-        robot_joint_state = moveit_msgs.msg.DisplayRobotState()
+        return self.solve_ik_collision_free(transformProduct(base_link_in_torso_link_transform, transform), numOfAttempt, seed_state)
+
+    def solve_ik_collision_free(self, transform, numOfAttempt, seed_state = None):
+        
         trans, rot = transform
 
+        if seed_state != None:
+            numOfAttempt = 1
+
         for _ in range(numOfAttempt):
-            seed_state = self.generate_seed_state(self.ik_solver.number_of_joints)
+            if seed_state == None:
+                seed_state = self.generate_seed_state(self.ik_solver.number_of_joints)
             
             joint_values = self.ik_solver.get_ik(seed_state, trans[0], trans[1], trans[2], rot[0], rot[1], rot[2], rot[3])
             if joint_values == None:
-                return None
+                continue
 
             current_robot_state = moveit_msgs.msg.RobotState()
             current_robot_state.joint_state.header.stamp = rospy.Time.now()
             current_robot_state.joint_state.position = joint_values
             current_robot_state.joint_state.name = self.ik_solver.joint_names
 
-            # need to check whether the joint is not out of joint limits
-            joint_limits = [self.get_joint_limit(name) for name in self.ik_solver.joint_names]
-            distanceToLimits = min([min(joint_values[ind] - joint_limits[ind][0], joint_limits[ind][1] - joint_values[ind]) for ind in range(len(joint_limits))])
-            
-            # ik solver may return a joint state which is out of joint limits
-            if distanceToLimits < 0.1:
-                continue
-
+            robot_joint_state = moveit_msgs.msg.DisplayRobotState()
             if self.is_state_valid(current_robot_state):
                 robot_joint_state.state = current_robot_state
                 return robot_joint_state
+            else:
+                continue
+            # # need to check whether the joint is not out of joint limits
+            # joint_limits = [self.get_joint_limit(name) for name in self.ik_solver.joint_names]
+            # distanceToLimits = min([min(joint_values[ind] - joint_limits[ind][0], joint_limits[ind][1] - joint_values[ind]) for ind in range(len(joint_limits))])
+            
+            # # ik solver may return a joint state which is out of joint limits
+            # if distanceToLimits < 0.1:
+            #     continue
     
         return None
 
@@ -227,7 +270,7 @@ class Fetch_Robot():
         self.rotThreshold = rotThreshold
 
     def publishTargetFrame(self):
-        """please use verifyEndEffectorTrajectory instead"""
+        """please use planFollowEndEffectorTrajectory instead"""
         while not rospy.is_shutdown():
             rospy.Rate(10).sleep()
             self.targetFrame.header.stamp = rospy.Time()
@@ -282,7 +325,7 @@ class Fetch_Robot():
 
     # this function is used by cartisian motion controller
     def moveToFrame(self, transform, isInBaselink=True):
-        """please use verifyEndEffectorTrajectory instead"""
+        """please use planFollowEndEffectorTrajectory instead"""
 
         if isInBaselink: # if is move in base link, then need to convert it to arm base first
             self.tf_listener.waitForTransform(self.armbasename, self.basename, rospy.Time(), rospy.Duration(4.0))
@@ -501,7 +544,7 @@ class Fetch_Robot():
         object_pose.pose.orientation.z = rz
         object_pose.pose.orientation.w = rw
 
-        self.scene.add_mesh(objectname, object_pose, filename, size=(0.001,0.001,0.001))
+        self.scene.add_mesh(objectname, object_pose, filename, size=(1.0,1.0,1.0))
         start = rospy.get_time()
         second = rospy.get_time()
         while (second - start) < self.timeout and not rospy.is_shutdown():
@@ -574,7 +617,7 @@ class Fetch_Robot():
         
         return plan
 
-    def verifyEndEffectorTrajectory(self, initial_robot_state, trajectory):
+    def planFollowEndEffectorTrajectory(self, initial_robot_state, trajectory, gap_dis):
         current_endeffector = self.group.get_end_effector_link()
         self.group.set_end_effector_link("gripper_link")
         waypoints = []
@@ -593,7 +636,7 @@ class Fetch_Robot():
         # set start state
         self.group.set_start_state(initial_robot_state)
 
-        (plan, fraction) = self.group.compute_cartesian_path(waypoints, 0.002, 0, True, self.cons)
+        (plan, fraction) = self.group.compute_cartesian_path(waypoints, gap_dis, 0, True, self.cons)
 
         self.group.clear_path_constraints()
         # reset the start state

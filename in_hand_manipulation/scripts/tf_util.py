@@ -204,6 +204,26 @@ def PandaPosMax_t_PosMat(panda_posmtx):
 
     return mat
 
+def skew_twist(x):
+    result = np.zeros((4,4))
+    result[:3,:3] = skew(x[:3])
+    result[:3,3] = x[3:]
+    return result
+
+def skew(x):
+    return np.array([[0, -x[2], x[1]],
+                     [x[2], 0, -x[0]],
+                     [-x[1], x[0], 0]])
+
+def adjointRepresentationMatrix(trans):
+    if not trans.shape == (4,4):
+        raise Exception("wrong matrix must be 4 x 4 size!!")
+    result = np.zeros((6,6))
+    result[0:3, 0:3] = trans[0:3,0:3]
+    result[3:6, 3:6] = trans[0:3,0:3]
+    result[3:6, 0:3] = np.dot(skew(trans[:3, 3]), trans[0:3,0:3])
+    return result
+
 def PosMat_t_PandaPosMax(posmtx):
     # if not isRotationMatrix(posmtx[:3,:3]):
     #     raise Exception("The rotation part is not a rotation matrix!!")
