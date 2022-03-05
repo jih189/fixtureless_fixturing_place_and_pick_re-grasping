@@ -253,7 +253,7 @@ if __name__=='__main__':
                     needToRefine = False
                     # find where the gripper link is with refine needs joints
                     refineTrans = robot.get_fk(refine_need_joints, "gripper_link")
-                    refinePose = getMatrixFromQuaternionAndTrans(refineTrans[0], refineTrans[1])
+                    refinePose = getMatrixFromQuaternionAndTrans(refineTrans[1], refineTrans[0])
 
                     # calculate mom of refine need joints
                     refine_joint = [refine_need_joints[jn] for jn in robot.group.get_active_joints()]

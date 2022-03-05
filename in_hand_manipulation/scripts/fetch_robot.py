@@ -17,7 +17,7 @@ from controller_manager_msgs.srv import SwitchController, ListControllers
 import threading
 from rospy.core import is_shutdown
 import tf
-from tf_util import transformProduct, adjointRepresentationMatrix
+from tf_util import transformProduct, adjointRepresentationMatrix, getErrorBetweenTransforms
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import math
@@ -61,7 +61,7 @@ class Fetch_Robot():
             self.cartesian_motion_controller_publisher = rospy.Publisher('/arm_controller/cartesian_twist/command', TwistStamped, queue_size=10)
 
         self.group.set_max_velocity_scaling_factor(0.8)
-        self.hand_group.set_max_velocity_scaling_factor(0.8)
+        self.hand_group.set_max_velocity_scaling_factor(0.99)
 
 
         self.joint_names = ['r_gripper_finger_joint']
@@ -124,8 +124,8 @@ class Fetch_Robot():
             jc = JointConstraint()
             jc.joint_name = joint_name
             jc.position = joint_range[0] + tolerance
-            jc.tolerance_above = tolerance * 0.87
-            jc.tolerance_below = tolerance * 0.87
+            jc.tolerance_above = tolerance * 0.95
+            jc.tolerance_below = tolerance * 0.95
             jc.weight = 1.0
             self.cons.joint_constraints.append(jc)
 
@@ -147,8 +147,8 @@ class Fetch_Robot():
         req.robot_state = current_robot_state
         resp = self.fk_srv.call(req)
 
-        return [[resp.pose_stamped[0].pose.orientation.x, resp.pose_stamped[0].pose.orientation.y, resp.pose_stamped[0].pose.orientation.z, resp.pose_stamped[0].pose.orientation.w], 
-                                    [resp.pose_stamped[0].pose.position.x, resp.pose_stamped[0].pose.position.y, resp.pose_stamped[0].pose.position.z]]
+        return [[resp.pose_stamped[0].pose.position.x, resp.pose_stamped[0].pose.position.y, resp.pose_stamped[0].pose.position.z],
+                [resp.pose_stamped[0].pose.orientation.x, resp.pose_stamped[0].pose.orientation.y, resp.pose_stamped[0].pose.orientation.z, resp.pose_stamped[0].pose.orientation.w]] 
 
     def get_joint_limit(self, joint_name):
         return self.robot.get_joint(joint_name).bounds()
@@ -156,9 +156,13 @@ class Fetch_Robot():
     def get_mom(self, joints):
         # return the measure of manipulability of given joints
         Jacobian_matrix = self.group.get_jacobian_matrix(joints)
-        return np.sqrt(np.trace(np.linalg.cholesky(Jacobian_matrix.dot(np.transpose(Jacobian_matrix))))) 
+        try:
+            result = np.sqrt(np.trace(np.linalg.cholesky(Jacobian_matrix.dot(np.transpose(Jacobian_matrix)))))
+        except np.linalg.LinAlgError as err:
+            print(str(err))
+            result = 0
+        return result
         
-
     def get_jacobian_matrix(self, joints):
         return self.group.get_jacobian_matrix(joints)
 
@@ -202,14 +206,6 @@ class Fetch_Robot():
                 return robot_joint_state
             else:
                 continue
-            # # need to check whether the joint is not out of joint limits
-            # joint_limits = [self.get_joint_limit(name) for name in self.ik_solver.joint_names]
-            # distanceToLimits = min([min(joint_values[ind] - joint_limits[ind][0], joint_limits[ind][1] - joint_values[ind]) for ind in range(len(joint_limits))])
-            
-            # # ik solver may return a joint state which is out of joint limits
-            # if distanceToLimits < 0.1:
-            #     continue
-    
         return None
 
     def is_state_valid(self, checked_robot_state):
@@ -472,7 +468,7 @@ class Fetch_Robot():
                 break
             second = rospy.get_time()
 
-    def addCollisionObject(self, objectname, transfrom_Q, filename, size_scale = .001):
+    def addCollisionObject(self, objectname, transfrom_Q, filename, size_scale = 1.0):
 
         t,r = transfrom_Q
 
@@ -636,7 +632,20 @@ class Fetch_Robot():
         # set start state
         self.group.set_start_state(initial_robot_state)
 
-        (plan, fraction) = self.group.compute_cartesian_path(waypoints, gap_dis, 0, True, self.cons)
+        if len(waypoints) < 3: # if the number of waypoints is not small, then it may not plan
+            gap_dis *= 0.1
+        #     initial_joint_pair = {}
+        #     for jn, jv in zip(list(initial_robot_state.joint_state.name), list(initial_robot_state.joint_state.position)):
+        #         initial_joint_pair[jn] = jv
+        #     print("-----------")
+        #     initial_trans = self.get_fk(initial_joint_pair, "gripper_link")
+        #     first_waypoint_trans = trajectory[0]
+        #     print(getErrorBetweenTransforms(initial_trans, first_waypoint_trans))
+
+        (plan, fraction) = self.group.compute_cartesian_path(waypoints, gap_dis, 2.0, True, self.cons)
+
+        # if len(waypoints) < 3:
+        #     print("fraction ", fraction)
 
         self.group.clear_path_constraints()
         # reset the start state
@@ -670,6 +679,7 @@ class Fetch_Robot():
         return plan
 
     def planto_open_gripper(self, value = 0.04):
+        value = min(value, 0.04)
         joint_state = JointState()
         joint_state.header = Header()
         joint_state.header.stamp = rospy.Time.now()

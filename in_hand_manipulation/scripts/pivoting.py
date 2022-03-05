@@ -19,10 +19,9 @@ from moveit_msgs.msg import RobotTrajectory
 from geometry_msgs.msg import Pose
 from fetch_coppeliasim.srv import ObjectPose
 from itertools import compress
-import time
 from scipy.linalg import expm
 
-def detect_table_and_placement(robot_, numberOfSampling = 50, sizeOfTable2d = 500):
+def detect_table_and_placement(robot_, numberOfSampling = 300, sizeOfTable2d = 500):
     """
     Search for a table surface and sampling a set of position on the table for manipulation.
     """
@@ -45,11 +44,11 @@ def detect_table_and_placement(robot_, numberOfSampling = 50, sizeOfTable2d = 50
 
     robot_.addCollisionTable("table", tableresult.center.x, tableresult.center.y, tableresult.center.z, \
                 table_quaternion[0], table_quaternion[1], table_quaternion[2], table_quaternion[3], \
-                tableresult.width * 1.0, tableresult.depth * 2, 0.02)
+                tableresult.width * 1.0, tableresult.depth * 2, 0.01)
     # robot.attachTable("table")
-    robot_.addCollisionTable("table_base", tableresult.center.x, tableresult.center.y, tableresult.center.z - 0.3, \
+    robot_.addCollisionTable("table_base", tableresult.center.x, tableresult.center.y, tableresult.center.z - 0.15, \
             table_quaternion[0], table_quaternion[1], table_quaternion[2], table_quaternion[3], \
-            tableresult.width, tableresult.depth, 0.6)
+            tableresult.width, tableresult.depth, 0.3)
 
     pc_list = np.array([[p[0],p[1],p[2]] for p in pc2.read_points(tableresult.point_cloud, skip_nans=True, field_names=("x", "y", "z"))])
 
@@ -86,24 +85,26 @@ def detect_table_and_placement(robot_, numberOfSampling = 50, sizeOfTable2d = 50
 
     validindex = []
     for r in np.random.choice(pc_list.shape[0], numberOfSampling):
+        if pc_list[r, 0] > 0.7 or pc_list[r, 0] < 0.42 or pc_list[r, 1] > 0.17 or pc_list[r, 1] < -0.17:
+            continue
         tablegrid_temp = tablegrid.copy()
         x = int((pc_list[r, 0] - tablewidth_low)/(tablesize/sizeOfTable2d))
         y = int((pc_list[r, 1] - tableheight_low)/(tablesize/sizeOfTable2d))
         tablegrid_temp[~create_circular_mask(tablegrid_temp.shape[0], tablegrid_temp.shape[1], [y, x], int(circlesize/2))] = 0
-        if np.count_nonzero(tablegrid_temp) > 0.9 * totalcirclenum:
+        if np.count_nonzero(tablegrid_temp) > 0.08 * totalcirclenum:
             validindex.append(r)
 
 
-    # # # Draw point based on above x, y axis values.
-    # plt.scatter(pc_list[:, 0], pc_list[:, 1], s=1)
-    # plt.scatter(pc_list[validindex, 0], pc_list[validindex, 1], s=3)
-    # # Set x, y label text.
-    # plt.show()
+    # # Draw point based on above x, y axis values.
+    plt.scatter(pc_list[:, 0], pc_list[:, 1], s=1)
+    plt.scatter(pc_list[validindex, 0], pc_list[validindex, 1], s=3)
+    # Set x, y label text.
+    plt.show()
 
     return [(p, (tableresult.orientation.x, tableresult.orientation.y, tableresult.orientation.z, tableresult.orientation.w)) for p in pc_list[validindex]]
 
-def loadEnd_effector_trajectory():
-    with open('actionqueue/json_data.json') as json_file:
+def loadEnd_effector_trajectory(object_name):
+    with open('actionqueue/' + object_name + '_json_data.json') as json_file:
         data = json.load(json_file)
 
     result = [[data[0][0], data[0][1]]]
@@ -125,7 +126,7 @@ def loadEnd_effector_trajectory():
             e[2][3] /= 1000
             visual_result.append(e)
 
-    with open('actionqueue/grasp_json_data.json') as json_file:
+    with open('actionqueue/' + object_name + '_grasp_json_data.json') as json_file:
         grasp_data = json.load(json_file)
         grasp_data[0][3] /= 1000
         grasp_data[1][3] /= 1000
@@ -138,8 +139,12 @@ def loadEnd_effector_trajectory():
 
 if __name__=='__main__':
 
-    isSim = True
-    momThreshold = 2.1
+    isSim = False
+    isSimple = True
+    momThreshold = 2.06
+    object_name = "book"
+    # object_name = "bottle"
+    # object_name = "can"
 
     rospy.init_node('pivoting_node')
     robot = Fetch_Robot(sim=isSim)
@@ -153,20 +158,17 @@ if __name__=='__main__':
         objectMover = rospy.ServiceProxy('move_object', ObjectPose)
 
     # load json trajectory
-    end_effector_trajectory, visual_end_effector_trajectory, object_grasp = loadEnd_effector_trajectory()
+    end_effector_trajectory, visual_end_effector_trajectory, object_grasp = loadEnd_effector_trajectory(object_name)
 
     # find a set of valid position on table for manipulation
     valid_manipulation_points = detect_table_and_placement(robot)
-    
-    marker_publisher = rospy.Publisher("trajectory_marker", MarkerArray, queue_size=10)
 
-    markerArray = MarkerArray()
-    init_ik_result = None
-    current_init_grasp = None
-    desired_object_trans_in_base = None
+    init_ik_result = None # initial arm configuration for grasping
+    current_init_grasp = None # initial grasp trasnform in the base frame
     found_solution = False
-    totalPlan = []
-    graspingPlan = []
+    originalPlan = [] # original plan before refinement
+    totalPlan = [] # plan to pregrasp the object
+    graspingPlan = [] # plan to grasp the object
 
     for p in valid_manipulation_points:
         testpoint = getMatrixFromQuaternionAndTrans(p[1], p[0])
@@ -175,6 +177,38 @@ if __name__=='__main__':
             rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
             ## calculate the gripper pose on table
             current_testpoint = testpoint.dot(rotationInZ)
+            debug_current_testpoint = testpoint.dot(rotationInZ)
+
+            if isSimple: # test for directly lifting up
+                # use ik solver to check whether the initial pose is feasible or not
+                current_init_grasp = getTransformFromPoseMat(current_testpoint.dot(np.array(end_effector_trajectory[0][1][0])))
+                init_ik_result = robot.solve_ik_collision_free_in_base(current_init_grasp, 10)
+                if init_ik_result == None:
+                    continue
+
+                totalPlan = []
+                totalPlan.append(("gripper", robot.planto_open_gripper(), 0.08))
+                totalPlan.append(("arm", robot.planto_joints(init_ik_result.state.joint_state.position, init_ik_result.state.joint_state.name)))
+                graspingPlan = copy.deepcopy(totalPlan)
+                originalPlan = copy.deepcopy(totalPlan)
+
+                totalPlan.append(("gripper", robot.planto_close_gripper(), 0.0))
+                moveit_robot_state = copy.deepcopy(init_ik_result.state)
+
+                # add lift up planning
+                liftup_joint_pair = {}
+                for jn, jv in zip(list(moveit_robot_state.joint_state.name), list(moveit_robot_state.joint_state.position)):
+                    liftup_joint_pair[jn] = jv
+                liftup_trans = robot.get_fk(liftup_joint_pair, "gripper_link")
+                liftup_trans[0][2] += 0.2
+                liftup_plan, fraction = robot.planFollowEndEffectorTrajectory(moveit_robot_state, [liftup_trans], 0.01)
+                if fraction != 1.0:
+                    continue
+                totalPlan.append(("arm", liftup_plan))
+
+                found_solution = True
+
+                break
 
             # check the ik feasibility of the trajectory
             ik_feasible = True
@@ -197,15 +231,19 @@ if __name__=='__main__':
                 continue
 
             # generate cartesian path from the pose waypoints
+            debug_moveit_robot_state = copy.deepcopy(init_ik_result.state)
             moveit_robot_state = copy.deepcopy(init_ik_result.state)
 
             totalPlan = []
             totalPlan.append(("gripper", robot.planto_open_gripper(), 0.08))
             totalPlan.append(("arm", robot.planto_joints(init_ik_result.state.joint_state.position, init_ik_result.state.joint_state.name)))
+            totalPlan.append(("gripper", robot.planto_close_gripper(), 0.0))
             graspingPlan = copy.deepcopy(totalPlan)
+            originalPlan = copy.deepcopy(totalPlan)
 
             path_feasible = True
             last_grasp_value = 0.0
+            step = 0
             for a, t in end_effector_trajectory:
                 if a == 'closeGripper':
                     totalPlan.append(("gripper", robot.planto_close_gripper(), 0.0))
@@ -216,86 +254,144 @@ if __name__=='__main__':
                     last_grasp_value = t/1000.0
                     continue
 
-                (currentTrajectoryPlan, fraction) = robot.planFollowEndEffectorTrajectory(moveit_robot_state, [getTransformFromPoseMat(current_testpoint.dot(np.array(e))) for e in t], 0.005)
-                if fraction != 1.0:
-                    path_feasible = False
-                    break
-                
                 needToRefine = False
                 refine_need_joints = None
                 momOfTrajectory = []
 
-                # calculate the mom of the trajectory
-                for p in range(0, len(currentTrajectoryPlan.joint_trajectory.points)):
-                    current_joints = list(currentTrajectoryPlan.joint_trajectory.points[p].positions)
-                    measureOfManipulability_fast = robot.get_mom(current_joints)
-                    momOfTrajectory.append(measureOfManipulability_fast)
-                    if not needToRefine and measureOfManipulability_fast < momThreshold: # need to refine the trajectory
-                        needToRefine = True
-                        path_feasible = False
-                        refine_need_joints = {}
-                        for jn, jv in zip(list(currentTrajectoryPlan.joint_trajectory.joint_names), current_joints):
-                            refine_need_joints[jn] = jv
+                print("step ", step)
+                step += 1
+                print("length of waypoints ", len(t))
+                (currentTrajectoryPlan, fraction) = robot.planFollowEndEffectorTrajectory(moveit_robot_state, [getTransformFromPoseMat(current_testpoint.dot(np.array(e))) for e in t], 0.01)
+                if fraction != 1.0:
+                    print("low fraction for initial cartesian planning with ", fraction)
+                    path_feasible = False
+
+                    # check the mom of incomplete planning
+                    current_joints = None
+                    for p in range(0, len(currentTrajectoryPlan.joint_trajectory.points)):
+                        current_joints = list(currentTrajectoryPlan.joint_trajectory.points[p].positions)
+                        momOfTrajectory.append(robot.get_mom(current_joints))
+                    # the last point should be the one too close to the singularity
+                    needToRefine = True
+                    refine_need_joints = {}
+                    for jn, jv in zip(list(currentTrajectoryPlan.joint_trajectory.joint_names), current_joints):
+                        refine_need_joints[jn] = jv
+                
+                else:
+                    # calculate the mom of the trajectory
+                    for p in range(0, len(currentTrajectoryPlan.joint_trajectory.points)):
+                        current_joints = list(currentTrajectoryPlan.joint_trajectory.points[p].positions)
+                        measureOfManipulability_fast = robot.get_mom(current_joints)
+                        momOfTrajectory.append(measureOfManipulability_fast)
+                        if not needToRefine and measureOfManipulability_fast < momThreshold: # need to refine the trajectory
+                            needToRefine = True
+                            path_feasible = False
+                            refine_need_joints = {}
+                            for jn, jv in zip(list(currentTrajectoryPlan.joint_trajectory.joint_names), current_joints):
+                                refine_need_joints[jn] = jv
 
                 current_mom = min(momOfTrajectory)
 
                 if needToRefine:
                     #######################################################################################################
-                    # find where the gripper link is with refine needs joints
-                    refineTrans = robot.get_fk(refine_need_joints, "gripper_link")
-                    refinePose = getMatrixFromQuaternionAndTrans(refineTrans[0], refineTrans[1])
+                    print("try to refine")
+                    numberOfRefineStep = 10
+                    current_fraction = 0.0
+                    refine_dis = 0.015
+                    for update_dis in range(1, numberOfRefineStep):
+                        # find where the gripper link is with refine needs joints
+                        refineTrans = robot.get_fk(refine_need_joints, "gripper_link")
+                        refinePose = getMatrixFromQuaternionAndTrans(refineTrans[1], refineTrans[0])
 
-                    # calculate mom of refine need joints
-                    refine_joint = [refine_need_joints[jn] for jn in robot.group.get_active_joints()]
-                    measureOfManipulability_fast = robot.get_mom(refine_joint)
+                        # # calculate mom of refine need joints
+                        refine_joint = [refine_need_joints[jn] for jn in robot.group.get_active_joints()]
+                        measureOfManipulability_fast = robot.get_mom(refine_joint)
 
-                    # calculate the surface normal vector of singular point
-                    Jacobian_matrix = robot.get_jacobian_matrix(refine_joint)
-                    pseudoInverse_matrix = np.linalg.pinv(Jacobian_matrix)
-                    DerivativeOfMoM = []
-                    for j in range(len(refine_joint)):
-                        temp_joint = list(refine_joint)
-                        temp_joint[j] += 0.005
-                        DerivativeOfMoM.append(measureOfManipulability_fast * np.trace(((robot.get_jacobian_matrix(temp_joint) - Jacobian_matrix)/ 0.005).dot(pseudoInverse_matrix)))
-                    disToSin = np.array(DerivativeOfMoM).dot(pseudoInverse_matrix)
-                    singularity_normal = np.transpose(disToSin) / np.linalg.norm(disToSin)
+                        # calculate the surface normal vector of singular point
+                        Jacobian_matrix = robot.get_jacobian_matrix(refine_joint)
+                        pseudoInverse_matrix = np.linalg.pinv(Jacobian_matrix)
+                        DerivativeOfMoM = []
+                        for j in range(len(refine_joint)):
+                            temp_joint = list(refine_joint)
+                            temp_joint[j] += 0.005
+                            DerivativeOfMoM.append(measureOfManipulability_fast * np.trace(((robot.get_jacobian_matrix(temp_joint) - Jacobian_matrix)/ 0.005).dot(pseudoInverse_matrix)))
+                        disToSin = np.array(DerivativeOfMoM).dot(pseudoInverse_matrix)
+                        singularity_normal = np.transpose(disToSin) / np.linalg.norm(disToSin)
 
-                    # calculate the new position for the refine need joint
-                    pre_refine_twist_in_base = np.concatenate((singularity_normal[3:], singularity_normal[:3]))
-                    pre_refine_twist_on_table = np.dot(adjointRepresentationMatrix(np.linalg.inv(testpoint)), pre_refine_twist_in_base)
-                    refine_twist_on_table = np.array([0,0,pre_refine_twist_on_table[2], pre_refine_twist_on_table[3], pre_refine_twist_on_table[4], 0])
-                    refine_twist_in_base = np.dot(adjointRepresentationMatrix(testpoint), refine_twist_on_table)
+                        # calculate the new position for the refine need joint
+                        pre_refine_twist_in_base = np.concatenate((singularity_normal[3:], singularity_normal[:3]))
+                        pre_refine_twist_on_table = np.dot(adjointRepresentationMatrix(np.linalg.inv(testpoint)), pre_refine_twist_in_base)
+                        refine_twist_on_table = np.array([0,0,pre_refine_twist_on_table[2], pre_refine_twist_on_table[3], pre_refine_twist_on_table[4], 0])
+                        refine_twist_in_base = np.dot(adjointRepresentationMatrix(testpoint), refine_twist_on_table)
 
-                    for update_dis in range(1, 10):
-                        refined_pose_in_base = np.dot(expm(skew_twist(refine_twist_in_base) * 0.008 * update_dis), refinePose)
+                        # find the new initial position for manipulation
+                        refined_pose_in_base = np.dot(expm(skew_twist(refine_twist_in_base) * refine_dis), refinePose)
                         refined_initial_position = refined_pose_in_base.dot(np.linalg.inv(refinePose)).dot(current_testpoint)
 
                         current_init_grasp_temp = getTransformFromPoseMat(refined_initial_position.dot(np.array(t[0])))
                         init_ik_result_temp = robot.solve_ik_collision_free_in_base(current_init_grasp_temp, 5, list(moveit_robot_state.joint_state.position))
                         if init_ik_result_temp == None:
+                            print("ik solve failure in refine")
+                            break
+
+                        if robot.get_mom(list(init_ik_result_temp.state.joint_state.position)) < momThreshold:
+                            print("fail in low initial mom")
+                            # if initial manipubility is too low, then skip it
                             break
 
                         # need to plan to shift the object to better position
-                        (shift_plan, fraction) = robot.planFollowEndEffectorTrajectory(moveit_robot_state, [current_init_grasp_temp], 0.005)
+                        (shift_plan, fraction) = robot.planFollowEndEffectorTrajectory(moveit_robot_state, [current_init_grasp_temp], 0.01)
                         if fraction != 1.0:
+                            print("fail in low fraction in shifting")
                             break
 
+                        # calculate the mom of the shift trajectory
                         shift_mom_of_trajectory = [robot.get_mom(list(shift_plan.joint_trajectory.points[p].positions)) for p in range(0, len(shift_plan.joint_trajectory.points))]
+                        if min(shift_mom_of_trajectory) < momThreshold:
+                            print("shifting has low mom value")
+                            break
 
                         moveit_robot_state_temp = copy.deepcopy(moveit_robot_state)
                         moveit_robot_state_temp.joint_state.position = copy.deepcopy(shift_plan.joint_trajectory.points[-1].positions)
                         moveit_robot_state_temp.joint_state.velocity = copy.deepcopy(shift_plan.joint_trajectory.points[-1].velocities)
                         moveit_robot_state_temp.joint_state.effort = copy.deepcopy(shift_plan.joint_trajectory.points[-1].effort)
 
-                        (currentTrajectoryPlan_temp, fraction) = robot.planFollowEndEffectorTrajectory(moveit_robot_state_temp, [getTransformFromPoseMat(refined_initial_position.dot(np.array(e))) for e in t], 0.005)
-                        if fraction != 1.0:
-                            break
-                            
-                        # calculate the mom of the trajectory
-                        refined_mom_of_trajectory = [robot.get_mom(list(currentTrajectoryPlan_temp.joint_trajectory.points[p].positions)) for p in range(0, len(currentTrajectoryPlan_temp.joint_trajectory.points))]
-                        onestep_mom_of_trajectory = shift_mom_of_trajectory + refined_mom_of_trajectory
 
-                        if min(onestep_mom_of_trajectory) > momThreshold: # refine successfully, so set the path feasible to true
+                        refined_mom_of_trajectory = []
+                        (currentTrajectoryPlan_temp, fraction) = robot.planFollowEndEffectorTrajectory(moveit_robot_state_temp, [getTransformFromPoseMat(refined_initial_position.dot(np.array(e))) for e in t], 0.01)
+                        if fraction != 1.0:
+                            print("refined fraction = ", fraction)
+                            if update_dis == numberOfRefineStep - 1 or current_fraction > fraction:
+                                print("can't refine fraction anymore")
+                                break
+                            else:
+                                current_fraction = fraction
+
+                                # need to refine because of low fraction
+                                current_joints = None
+                                for p in range(0, len(currentTrajectoryPlan_temp.joint_trajectory.points)):
+                                    current_joints = list(currentTrajectoryPlan_temp.joint_trajectory.points[p].positions)
+                                    refined_mom_of_trajectory.append(robot.get_mom(current_joints))
+                                # the last point should be the one too close to the singularity
+                                refine_need_joints = {}
+                                for jn, jv in zip(list(currentTrajectoryPlan_temp.joint_trajectory.joint_names), current_joints):
+                                    refine_need_joints[jn] = jv
+                        else:
+                            # need to refine because of low mom
+                            for p in range(0, len(currentTrajectoryPlan_temp.joint_trajectory.points)):
+                                current_joints = list(currentTrajectoryPlan_temp.joint_trajectory.points[p].positions)
+                                measureOfManipulability_fast = robot.get_mom(current_joints)
+                                refined_mom_of_trajectory.append(measureOfManipulability_fast)
+                                if measureOfManipulability_fast < momThreshold: # need to refine the trajectory
+                                    # find the new refine joint
+                                    refine_need_joints = {}
+                                    for jn, jv in zip(list(currentTrajectoryPlan_temp.joint_trajectory.joint_names), current_joints):
+                                        refine_need_joints[jn] = jv
+
+                            test_mom = min(refined_mom_of_trajectory)
+                            print("refine current mom = ", test_mom)
+
+                        if fraction == 1.0 and test_mom > momThreshold: # refine successfully, so set the path feasible to true
                             path_feasible = True
                             # add shift plan
                             totalPlan.append(("gripper", robot.planto_close_gripper(), 0.0))
@@ -305,11 +401,17 @@ if __name__=='__main__':
                             currentTrajectoryPlan = copy.deepcopy(currentTrajectoryPlan_temp)
                             current_testpoint = copy.deepcopy(refined_initial_position)
                             break
+                        
+                        current_testpoint = copy.deepcopy(refined_initial_position)
 
-                        if current_mom >= min(onestep_mom_of_trajectory):
-                            break
-                        else:
-                            current_mom = min(onestep_mom_of_trajectory)
+                        if fraction == 1.0:
+                            # if the refinement is going wrong direction, then break
+                            if current_mom > test_mom:
+                                if current_mom > (test_mom + 0.01):
+                                    print("fail in refinement wrong way")
+                                    break
+                            else:
+                                current_mom = test_mom
 
                 if not path_feasible:
                     break
@@ -320,8 +422,28 @@ if __name__=='__main__':
                 moveit_robot_state.joint_state.velocity = copy.deepcopy(currentTrajectoryPlan.joint_trajectory.points[-1].velocities)
                 moveit_robot_state.joint_state.effort = copy.deepcopy(currentTrajectoryPlan.joint_trajectory.points[-1].effort)
 
+            print("path feasible", path_feasible, "---------------------------------------------------")
+
             if not path_feasible:
                 continue
+
+            for a, t in end_effector_trajectory:
+                if a == 'closeGripper' or a == 'setGripper':
+                    continue
+                (debug_currentTrajectoryPlan, _) = robot.planFollowEndEffectorTrajectory(debug_moveit_robot_state, [getTransformFromPoseMat(debug_current_testpoint.dot(np.array(e))) for e in t], 0.01)
+                originalPlan.append(("arm", debug_currentTrajectoryPlan))
+                debug_moveit_robot_state.joint_state.position = copy.deepcopy(debug_currentTrajectoryPlan.joint_trajectory.points[-1].positions)
+                debug_moveit_robot_state.joint_state.velocity = copy.deepcopy(debug_currentTrajectoryPlan.joint_trajectory.points[-1].velocities)
+                debug_moveit_robot_state.joint_state.effort = copy.deepcopy(debug_currentTrajectoryPlan.joint_trajectory.points[-1].effort)
+
+            # add lift up planning
+            liftup_joint_pair = {}
+            for jn, jv in zip(list(moveit_robot_state.joint_state.name), list(moveit_robot_state.joint_state.position)):
+                liftup_joint_pair[jn] = jv
+            liftup_trans = robot.get_fk(liftup_joint_pair, "gripper_link")
+            liftup_trans[0][2] += 0.03
+            liftup_plan, fraction = robot.planFollowEndEffectorTrajectory(moveit_robot_state, [liftup_trans], 0.01)
+            totalPlan.append(("arm", liftup_plan))
 
             found_solution = True
             break
@@ -335,12 +457,22 @@ if __name__=='__main__':
         # check the whole mom of the trajectory solution
         total_mom_trajectory = []
         grasp_mom_trajectory = []
+        original_mom_trajectory = []
+
         for point in totalPlan:
             if point[0] == "gripper":
                 continue
             action, trajectory = point
             for p in trajectory.joint_trajectory.points:
                 total_mom_trajectory.append(robot.get_mom(list(p.positions)))
+
+        for point in originalPlan:
+            if point[0] == "gripper":
+                continue
+            action, trajectory = point
+            for p in trajectory.joint_trajectory.points:
+                original_mom_trajectory.append(robot.get_mom(list(p.positions)))
+
 
         for point in graspingPlan:
             if point[0] == "gripper":
@@ -350,6 +482,7 @@ if __name__=='__main__':
                 grasp_mom_trajectory.append(robot.get_mom(list(p.positions)))
 
         plt.plot(total_mom_trajectory, label="mom of solution trajectory")
+        plt.plot(original_mom_trajectory, label="mom of original trajectory")
         plt.plot(grasp_mom_trajectory, label="mom of grasping trajectory")
         # plt.ylim(ymin=0)
         plt.legend()
@@ -357,112 +490,91 @@ if __name__=='__main__':
 
         robot.display_trajectory([p[1] for p in totalPlan])
 
-    #     raw_input("execute plan")
+        raw_input("execute plan")
 
-    #     for p in totalPlan[:2]:
-    #         if p[0] == "gripper":
-    #             robot.setGripperWidth(p[2])
-    #         elif p[0] == "arm":
-    #             robot.execute_plan(p[1])
+        for p in totalPlan[:2]:
+            if p[0] == "gripper":
+                robot.setGripperWidth(p[2])
+            elif p[0] == "arm":
+                robot.execute_plan(p[1])
 
-    #     # if it is in Sim, then we can move the object to the position where the robot can grasp
-    #     # get the transform from world to baselink
-    #     world_to_base_mat = tf_helper.getPoseMat("world", "base_link")
-
-    #     desired_object_pose_mat_in_base = getMatrixFromQuaternionAndTrans(current_init_grasp[1], current_init_grasp[0]).dot(np.linalg.inv(np.array(object_grasp)))
-    #     desired_object_trans_in_base = getTransformFromPoseMat(desired_object_pose_mat_in_base)
-    #     desired_object_trans = getTransformFromPoseMat(world_to_base_mat.dot(desired_object_pose_mat_in_base))
-    #     # need to show object marker in rviz
-
-    #     object_marker_publisher = rospy.Publisher("object_marker", Marker, queue_size=10)
-
-    #     marker = Marker()
-    #     marker.header.frame_id = "/base_link"
-    #     marker.type = marker.MESH_RESOURCE
-    #     marker.mesh_resource = "package://in_hand_manipulation/objects/bottle.stl"
-    #     marker.action = marker.ADD
-    #     marker.color.a = 0.5
-    #     marker.color.r = 0.0
-    #     marker.color.g = 0.0
-    #     marker.color.b = 1.0
-    #     marker.scale.x = 1.0
-    #     marker.scale.y = 1.0
-    #     marker.scale.z = 1.0
-    #     marker.pose.orientation.x = desired_object_trans_in_base[1][0]
-    #     marker.pose.orientation.y = desired_object_trans_in_base[1][1]
-    #     marker.pose.orientation.z = desired_object_trans_in_base[1][2]
-    #     marker.pose.orientation.w = desired_object_trans_in_base[1][3]
-    #     marker.pose.position.x = desired_object_trans_in_base[0][0]
-    #     marker.pose.position.y = desired_object_trans_in_base[0][1]
-    #     marker.pose.position.z = desired_object_trans_in_base[0][2]
-
-    #     if isSim:
-    #         # move the object to where the robot can grasp
-    #         try:
-    #             object_pose = Pose()
-    #             object_pose.position.x = desired_object_trans[0][0]
-    #             object_pose.position.y = desired_object_trans[0][1]
-    #             object_pose.position.z = desired_object_trans[0][2]
-
-    #             object_pose.orientation.x = desired_object_trans[1][0]
-    #             object_pose.orientation.y = desired_object_trans[1][1]
-    #             object_pose.orientation.z = desired_object_trans[1][2]
-    #             object_pose.orientation.w = desired_object_trans[1][3]
-
-    #             objectMover("bottle", object_pose)
-    #         except rospy.ServiceException as exc:
-    #             print("Service did not process request: " + str(exc))
-    #             exit()
-
-    #     # while not rospy.is_shutdown():
-    #     #     object_marker_publisher.publish(marker)
-    #     #     rospy.sleep(0.5)  
-    #     # exit()  
-    #     raw_input("ready to pivot")
-
-    #     # robot.addManipulatedObject("object", desired_object_trans_in_base[0][0],  desired_object_trans_in_base[0][1],  desired_object_trans_in_base[0][2],
-    #     #                 desired_object_trans_in_base[1][0], desired_object_trans_in_base[1][1], desired_object_trans_in_base[1][2], desired_object_trans_in_base[1][3], "/home/lambda/catkin_ws/src/in_hand_manipulation/objects/bottle.stl")
-
-    #     # execute the actions
-    #     for p in totalPlan[2:]:
-    #         if p[0] == "gripper":
-    #             robot.setGripperWidth(p[2])
-    #         elif p[0] == "arm":
-    #             # hope we are lucky enoughs
-    #             for i in range(len(p[1].joint_trajectory.points) - 1):
-    #                 if (p[1].joint_trajectory.points[i+1].time_from_start - p[1].joint_trajectory.points[i].time_from_start) == rospy.Duration(0):
-    #                     p[1].joint_trajectory.points[i+1].time_from_start += rospy.Duration(secs=0, nsecs=10000)
-
-    #             joint_error = robot.execute_plan(p[1])
-    #             if joint_error > 1.0:
-    #                 for i in range(len(p[1].joint_trajectory.points) - 1):
-    #                     difftime = p[1].joint_trajectory.points[i+1].time_from_start - p[1].joint_trajectory.points[i].time_from_start
-    #                     print(difftime, difftime==rospy.Duration(0))
-    #                     if difftime==rospy.Duration(0):
-    #                         print("---", p[1].joint_trajectory.points[i].time_from_start + difftime / 2)
-    #                 # # print the error trajectory
-    #                 print("something is wrong")
-    #                 break
-
-    #     final_trans, final_rot = robot.getCurrentHandFrameInBase()
-
-    #     final_object_pose_mat_in_base = getMatrixFromQuaternionAndTrans(final_rot, final_trans).dot(np.linalg.inv(np.array(object_grasp)))
-    #     final_object_trans_in_base = getTransformFromPoseMat(final_object_pose_mat_in_base)
-    #     marker.pose.orientation.x = final_object_trans_in_base[1][0]
-    #     marker.pose.orientation.y = final_object_trans_in_base[1][1]
-    #     marker.pose.orientation.z = final_object_trans_in_base[1][2]
-    #     marker.pose.orientation.w = final_object_trans_in_base[1][3]
-    #     marker.pose.position.x = final_object_trans_in_base[0][0]
-    #     marker.pose.position.y = final_object_trans_in_base[0][1]
-    #     marker.pose.position.z = final_object_trans_in_base[0][2]
-
-    #     while not rospy.is_shutdown():
-    #         object_marker_publisher.publish(marker)
-    #         rospy.sleep(0.5)
-
-    # # while not rospy.is_shutdown():
-    # #     for i, p in enumerate(valid_manipulation_points):
-    # #         tf_helper.pubTransform("pose " + str(i), p)
-    # #     marker_publisher.publish(markerArray)
-    # #     rospy.sleep(0.5)
+        desired_object_pose_mat_in_base = getMatrixFromQuaternionAndTrans(current_init_grasp[1], current_init_grasp[0]).dot(np.linalg.inv(np.array(object_grasp)))
+        desired_object_trans_in_base = getTransformFromPoseMat(desired_object_pose_mat_in_base)
         
+        if isSim:
+            # if it is in Sim, then we can move the object to the position where the robot can grasp
+            # get the transform from world to baselink
+            world_to_base_mat = tf_helper.getPoseMat("world", "base_link")
+            desired_object_trans = getTransformFromPoseMat(world_to_base_mat.dot(desired_object_pose_mat_in_base))
+
+            # move the object to where the robot can grasp
+            try:
+                object_pose = Pose()
+                object_pose.position.x = desired_object_trans[0][0]
+                object_pose.position.y = desired_object_trans[0][1]
+                object_pose.position.z = desired_object_trans[0][2]
+
+                object_pose.orientation.x = desired_object_trans[1][0]
+                object_pose.orientation.y = desired_object_trans[1][1]
+                object_pose.orientation.z = desired_object_trans[1][2]
+                object_pose.orientation.w = desired_object_trans[1][3]
+
+                objectMover(object_name, object_pose)
+            except rospy.ServiceException as exc:
+                print("Service did not process request: " + str(exc))
+                exit()
+    
+        # add the object in planning scene for visualizing the manipulation
+        robot.addCollisionObject("object", desired_object_trans_in_base, "/home/lambda/catkin_ws/src/objects_description/" + object_name + "/" + object_name + ".stl", 0.001)
+
+        raw_input("grasping")
+
+        if totalPlan[2][0] == "gripper":
+            robot.setGripperWidth(totalPlan[2][2])
+
+        raw_input("execute grasp optimization")
+
+        # execute the actions
+        for p in totalPlan[3:]:
+            if p[0] == "gripper":
+                robot.setGripperWidth(p[2])
+                if p[2] == 0.0:
+                    robot.attachManipulatedObject("object")
+                else:
+                    robot.detachManipulatedObject("object")
+
+            elif p[0] == "arm":
+                # hope we are lucky enoughs
+                for i in range(len(p[1].joint_trajectory.points) - 1):
+                    if (p[1].joint_trajectory.points[i+1].time_from_start - p[1].joint_trajectory.points[i].time_from_start) == rospy.Duration(0):
+                        p[1].joint_trajectory.points[i+1].time_from_start += rospy.Duration(secs=0, nsecs=10000)
+
+                joint_error = robot.execute_plan(p[1])
+                if joint_error > 1.0:
+                    for i in range(len(p[1].joint_trajectory.points) - 1):
+                        difftime = p[1].joint_trajectory.points[i+1].time_from_start - p[1].joint_trajectory.points[i].time_from_start
+                        print(difftime, difftime==rospy.Duration(0))
+                        if difftime==rospy.Duration(0):
+                            print("---", p[1].joint_trajectory.points[i].time_from_start + difftime / 2)
+                    # # print the error trajectory
+                    print("something is wrong")
+                    break
+        
+        # # calculate current pose of the object to hand
+        # tf_helper.getTransform()
+        if isSim:
+            current_object_pose_in_hand = tf_helper.getPoseMat(object_name, "gripper_link")
+            print("current object pose in hand")
+            print(current_object_pose_in_hand)
+
+
+            # calculate the desired pose of the object to hand
+            print("desired object pose in hand")
+            desired_object_pose_in_hand = np.array(object_grasp)
+            print(desired_object_pose_in_hand)
+
+            print("translation error")
+            print(np.linalg.norm(current_object_pose_in_hand[:3, 3] - desired_object_pose_in_hand[:3,3]))
+            print("rotational error")
+            diff_rot = R.from_dcm(np.transpose(current_object_pose_in_hand[:3,:3]).dot(desired_object_pose_in_hand[:3,:3]))
+            print(np.linalg.norm(diff_rot.as_rotvec()) * 180.0 / np.pi)

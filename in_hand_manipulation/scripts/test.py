@@ -7,36 +7,35 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
+import actionlib
+from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal, GripperCommandAction, GripperCommandGoal
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+
 
 import copy
 import time
 if __name__=='__main__':
 
     rospy.init_node('test_node')
-    robot = Fetch_Robot(sim=True)
+    # robot = Fetch_Robot(sim=False)
 
-    init_trans = [[0.907, -0.356, 0.8],[0, 0, 0, 1]]
 
-    ik_planning_time = time.time()
-    init_ik_result = robot.solve_ik_collision_free_in_base(init_trans, 10)
-    print("ik planning time ", time.time() - ik_planning_time)
+    def lift_robot_torso(joint_value=[0.3]): #0 - .4
+        joint_names = ['torso_lift_joint']
+        client = actionlib.SimpleActionClient("/torso_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
 
-    approach_plan = robot.planto_joints(init_ik_result.state.joint_state.position, init_ik_result.state.joint_state.name)
-    robot.execute_plan(approach_plan)
+        rospy.loginfo('Waiting for joint trajectory action')    
+        client.wait_for_server()
+        rospy.loginfo('Found joint trajectory action!')
+        
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.joint_names = joint_names
+        point = JointTrajectoryPoint()
+        # point.velocities.append(0.1)
+        point.positions = joint_value
+        point.time_from_start = rospy.Duration(1)
+        goal.trajectory.points.append(point)
+        client.send_goal_and_wait(goal)
 
-    # generate cartesian path from the pose waypoints
-    moveit_robot_state = copy.deepcopy(init_ik_result.state)
+    lift_robot_torso()
 
-    gripper_trajectory = []
-    for i in range(50):
-        temp = copy.deepcopy(init_trans)
-        temp[0][2] += (i * 0.001)
-        gripper_trajectory.append(temp)
-
-    planning_time = time.time()
-    cartesian_plan, fraction = robot.planFollowEndEffectorTrajectory(moveit_robot_state, gripper_trajectory, 0.1)
-    print("length of waypoint ", len(gripper_trajectory))
-    print("length of cartesian path ", len(cartesian_plan.joint_trajectory.points))
-    print("cartesian planning time ", time.time() - planning_time)
-
-    robot.execute_plan(cartesian_plan)
