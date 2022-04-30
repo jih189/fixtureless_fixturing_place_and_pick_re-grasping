@@ -17,7 +17,7 @@ from controller_manager_msgs.srv import SwitchController, ListControllers
 import threading
 from rospy.core import is_shutdown
 import tf
-from tf_util import transformProduct, adjointRepresentationMatrix, getErrorBetweenTransforms
+from tf_util import transformProduct, getMatrixFromQuaternionAndTrans, getTransformFromPoseMat
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import math
@@ -176,8 +176,6 @@ class Fetch_Robot():
         # find the transform from arm base to the base link
         self.tf_listener.waitForTransform(self.armbasename, self.basename, rospy.Time(), rospy.Duration(4.0))
         base_link_in_torso_link_transform = self.tf_listener.lookupTransform(self.armbasename, self.basename, rospy.Time())
-
-
         return self.solve_ik_collision_free(transformProduct(base_link_in_torso_link_transform, transform), numOfAttempt, seed_state)
 
     def solve_ik_collision_free(self, transform, numOfAttempt, seed_state = None):
@@ -440,9 +438,15 @@ class Fetch_Robot():
 
 
     def attachManipulatedObject(self, objectname):
+        # need to ensure the object is not attacted the robot yet.
+        attached_objects = self.scene.get_attached_objects([objectname])
+        if len(attached_objects.keys()) > 0:
+            # detach first
+            self.detachManipulatedObject(objectname)
 
         touch_links = self.robot.get_link_names(group=self.group_name)
         # need to add the links which are not belong to the group
+        touch_links.append(self.eef_link)
         touch_links.append("gripper_link")
         touch_links.append("l_gripper_finger_link")
         touch_links.append("r_gripper_finger_link")
@@ -523,38 +527,38 @@ class Fetch_Robot():
         self.collision_object_pub.publish(collision_object_msgs)
         self.attachManipulatedObject(objectname)
 
-    def addManipulatedObject(self, objectname, x, y, z, rx, ry, rz, rw, filename):
-        touch_links = self.robot.get_link_names(group=self.group_name)
-        # need to add the links which are not belong to the group
-        touch_links.append("gripper_link")
-        touch_links.append("l_gripper_finger_link")
-        touch_links.append("r_gripper_finger_link")
-        object_pose = PoseStamped()
-        object_pose.header.frame_id = self.robot.get_planning_frame()
-        object_pose.pose.position.x = x
-        object_pose.pose.position.y = y
-        object_pose.pose.position.z = z
+    # def addManipulatedObject(self, objectname, x, y, z, rx, ry, rz, rw, filename):
+    #     touch_links = self.robot.get_link_names(group=self.group_name)
+    #     # need to add the links which are not belong to the group
+    #     touch_links.append("gripper_link")
+    #     touch_links.append("l_gripper_finger_link")
+    #     touch_links.append("r_gripper_finger_link")
+    #     object_pose = PoseStamped()
+    #     object_pose.header.frame_id = self.robot.get_planning_frame()
+    #     object_pose.pose.position.x = x
+    #     object_pose.pose.position.y = y
+    #     object_pose.pose.position.z = z
 
-        object_pose.pose.orientation.x = rx
-        object_pose.pose.orientation.y = ry
-        object_pose.pose.orientation.z = rz
-        object_pose.pose.orientation.w = rw
+    #     object_pose.pose.orientation.x = rx
+    #     object_pose.pose.orientation.y = ry
+    #     object_pose.pose.orientation.z = rz
+    #     object_pose.pose.orientation.w = rw
 
-        self.scene.add_mesh(objectname, object_pose, filename, size=(1.0,1.0,1.0))
-        start = rospy.get_time()
-        second = rospy.get_time()
-        while (second - start) < self.timeout and not rospy.is_shutdown():
-            if objectname in self.scene.get_known_object_names():
-                break
-            second = rospy.get_time()
-        self.scene.attach_mesh(self.eef_link, objectname, touch_links=touch_links)
-        start = rospy.get_time()
-        second = rospy.get_time()
-        while (second - start) < self.timeout and not rospy.is_shutdown():
-            attached_objects = self.scene.get_attached_objects([objectname])
-            if len(attached_objects.keys()) > 0:
-                break
-            second = rospy.get_time()
+    #     self.scene.add_mesh(objectname, object_pose, filename, size=(1.0,1.0,1.0))
+    #     start = rospy.get_time()
+    #     second = rospy.get_time()
+    #     while (second - start) < self.timeout and not rospy.is_shutdown():
+    #         if objectname in self.scene.get_known_object_names():
+    #             break
+    #         second = rospy.get_time()
+    #     self.scene.attach_mesh(self.eef_link, objectname, touch_links=touch_links)
+    #     start = rospy.get_time()
+    #     second = rospy.get_time()
+    #     while (second - start) < self.timeout and not rospy.is_shutdown():
+    #         attached_objects = self.scene.get_attached_objects([objectname])
+    #         if len(attached_objects.keys()) > 0:
+    #             break
+    #         second = rospy.get_time()
 
     def goto_pose(self, x, y, z, rx, ry, rz, rw):
         pose_goal = Pose()
@@ -570,6 +574,103 @@ class Fetch_Robot():
         plan = self.group.go(wait=True)
         self.group.stop()
         self.group.clear_pose_targets()
+
+    def planto_joints_with_rotational_constraint(self, joints, names=None, desired_object_pose_in_hand=None):
+        if names == None:
+            self.group.set_joint_value_target(joints)
+        else:
+            self.group.set_joint_value_target(dict(zip(names, joints)))
+
+        # add rotational constraint
+        # start_pose = self.group.get_current_pose()
+
+        # path_contraints = moveit_msgs.msg.Constraints()
+        # path_contraints.name = "keep the object horizontal"
+        # orientation_c = moveit_msgs.msg.OrientationConstraint()
+        # # orientation_c.header = start_pose.header
+        # orientation_c.header.frame_id = "base_link"
+        # # orientation_c.link_name = self.group.get_end_effector_link()
+        # orientation_c.link_name = "object"
+        # orientation_c.orientation.w = 1.0
+        # orientation_c.absolute_x_axis_tolerance = 6.283
+        # orientation_c.absolute_y_axis_tolerance = 6.283
+        # orientation_c.absolute_z_axis_tolerance = 1.5
+        # orientation_c.weight = 0.2
+
+        # path_contraints.orientation_constraints.append(orientation_c)
+        # self.group.set_path_constraints(path_contraints)
+
+        for _ in range(30):
+            found_solution = True
+            plan = self.group.plan()
+
+            if len(plan.joint_trajectory.points) == 0:
+                self.group.clear_pose_targets()
+                self.group.clear_path_constraints()
+                return None
+
+            current_join_names = list(plan.joint_trajectory.joint_names)
+            
+            for p in range(0, len(plan.joint_trajectory.points)):
+                current_joints = list(plan.joint_trajectory.points[p].positions)
+                current_joint_pair = {}
+                for jn, jv in zip(current_join_names, current_joints):
+                    current_joint_pair[jn] = jv
+                current_trans = self.get_fk(current_joint_pair, "gripper_link")
+                current_object_pose = getMatrixFromQuaternionAndTrans(current_trans[1], current_trans[0]).dot(desired_object_pose_in_hand)
+
+                if current_object_pose[2,2] < 0.5: # if the z axis of the object is not pointing upward enough during moving then fail it
+                    found_solution = False
+                    break
+            
+            if found_solution:
+                self.group.clear_pose_targets()
+                self.group.clear_path_constraints()
+                return plan
+
+        self.group.clear_pose_targets()
+        self.group.clear_path_constraints()
+        return None
+
+    # def plan_object_to_pose(self, pose, object_name):
+    #     # the object must be attached to the hand already
+    #     current_endeffector = self.group.get_end_effector_link()
+    #     self.group.set_end_effector_link("gripper_link")
+        
+    #     trans, rotation = pose
+    #     pose_goal = Pose()
+    #     pose_goal.orientation.x = rotation[0]
+    #     pose_goal.orientation.y = rotation[1]
+    #     pose_goal.orientation.z = rotation[2]
+    #     pose_goal.orientation.w = rotation[3]
+    #     pose_goal.position.x = trans[0]
+    #     pose_goal.position.y = trans[1]
+    #     pose_goal.position.z = trans[2]
+    #     self.group.set_pose_target(pose_goal)
+
+    #     start_pose = self.group.get_current_pose()
+
+    #     path_contraints = moveit_msgs.msg.Constraints()
+    #     path_contraints.name = "keep gripper horizontal"
+    #     orientation_c = moveit_msgs.msg.OrientationConstraint()
+    #     orientation_c.header = start_pose.header
+    #     orientation_c.link_name = "object"
+    #     orientation_c.orientation.w = 1.0
+    #     orientation_c.absolute_x_axis_tolerance = 3.14
+    #     orientation_c.absolute_y_axis_tolerance = 3.14
+    #     orientation_c.absolute_z_axis_tolerance = 0.3
+    #     orientation_c.weight = 1
+
+    #     path_contraints.orientation_constraints.append(orientation_c)
+    #     self.group.set_path_constraints(path_contraints)
+        
+    #     plan = self.group.plan()
+
+    #     self.group.clear_pose_targets()
+    #     self.group.clear_path_constraints()
+    #     self.group.set_end_effector_link(current_endeffector)
+        
+    #     return plan
 
     def planto_pose_with_constraints(self, pose):
         trans, rotation = pose
@@ -630,7 +731,10 @@ class Fetch_Robot():
             waypoints.append(wpose)
         
         # set start state
-        self.group.set_start_state(initial_robot_state)
+        if initial_robot_state == None:
+            self.group.set_start_state_to_current_state()
+        else:
+            self.group.set_start_state(initial_robot_state)
 
         if len(waypoints) < 3: # if the number of waypoints is not small, then it may not plan
             gap_dis *= 0.1

@@ -20,7 +20,7 @@ if __name__=='__main__':
     # robot = Fetch_Robot(sim=False)
 
 
-    def lift_robot_torso(joint_value=[0.3]): #0 - .4
+    def lift_robot_torso(joint_value=[0.35]): #0 - .4
         joint_names = ['torso_lift_joint']
         client = actionlib.SimpleActionClient("/torso_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
 

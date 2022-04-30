@@ -535,7 +535,7 @@ def regrasping(tf_helper, robot, planner, dmgplanner, object_name=None,manipulat
           # tf_helper.pubTransform("place_grasp", getTransformFromPoseMat(placing_grasp))
           # tf_helper.pubTransform("pick_grasp", getTransformFromPoseMat(manipulation_position.dot(real_placement).dot(nextgrasp_candidate)))
           # get a trajectory of regrasping pose in the object frame with numpy pose mat format
-          dmgresult = dmgplanner.getTrajectory(init_graspPose, nextgrasp_candidate, candidate_jawwidth, real_placement, base)
+          dmgresult = dmgplanner.getTrajectory(init_graspPose, nextgrasp_candidate, candidate_jawwidth * 1000, real_placement, base)
           if dmgresult == None:
             continue
           else:

@@ -22,13 +22,14 @@ import pandaplotutils.pandactrl as pandactrl
 
 import networkx as nx
 from  tf_util import PandaPosMax_t_PosMat, PosMat_t_PandaPosMax
+import random
 
 
 class RegripPlanner():
     """
     this is planner to plan a sequence of placement and regrasping on table for in-hand regrasping.
     """
-    def __init__(self, objpath, handpkg, gdb, offset=0.0):
+    def __init__(self, objpath, handpkg, gdb, dmg_planner, offset=0.0):
         self.objtrimesh=trimesh.load_mesh(objpath)
         self.facets, self.facetnormals = self.objtrimesh.facets_over(faceangle=.95, segangle = .95)
         self.objgeom = pandageom.packpandageom(self.objtrimesh.vertices, self.objtrimesh.face_normals, self.objtrimesh.faces)
@@ -49,10 +50,12 @@ class RegripPlanner():
         self.bulletworld.attachRigidBody(self.planebullnode)
 
         self.bulletworldhplowest = BulletWorld()
-        self.planebullnode1 = cd.genCollisionPlane(offset=35)
+        self.planebullnode1 = cd.genCollisionPlane(offset=-5)
         self.bulletworldhplowest.attachRigidBody(self.planebullnode1)
 
         self.gdb = gdb
+
+        self.dmg_planner = dmg_planner
 
         self.__loadFreeAirGrip()
         self.__loadFreeTablePlacement()
@@ -64,7 +67,7 @@ class RegripPlanner():
         self.PlacementG.add_node(self.inital_grasp, stable=-1)
 
         self.end_grasp = "end_g"
-        self.PlacementG.add_node(self.end_grasp, stable=-2)
+        self.PlacementG.add_node(self.end_grasp, stable=-2, placement=-1)
 
 
     def __loadFreeAirGrip(self):
@@ -125,7 +128,8 @@ class RegripPlanner():
                 # search for the dmg belong to this ff placement, and dmg will be represented as a negative value.
                 for dmgid in self.gdb.execute("SELECT dmgs.iddmg FROM dmgs WHERE dmgs.placementid=%d" % self.placementid[p]):
                     self.PlacementG.add_node(-int(dmgid[0]), stable=self.placementtype[p], placement=self.placementid[p])
-        
+
+        check = True
         # create the edges in the graph
         for i in range(len(self.freegripid)):
             # get stable placement ids belong to current grasp
@@ -134,23 +138,9 @@ class RegripPlanner():
                 AND freetabletopplacement.placement=0 " % self.freegripid[i]
             relatedstableplacementid = self.gdb.execute(sql)
 
-            # get dmg ids belong to current grasp
-            sql = "SELECT dmgs.iddmg, dmgs.planevector, dmgs.placementpose FROM dmgs, freetabletopgrip, freetabletopplacement WHERE \
-                freetabletopgrip.idfreeairgrip=%d AND freetabletopplacement.idfreetabletopplacement=freetabletopgrip.idfreetabletopplacement \
-                AND freetabletopplacement.placement=1 AND dmgs.placementid=freetabletopgrip.idfreetabletopplacement " % self.freegripid[i]
-            relateddmg = self.gdb.execute(sql)
+            sql = "SELECT iddmg FROM graspid2dmgid WHERE idfreeairgrip=%d" % self.freegripid[i]
+            relateddmgid = [-int(dmgid[0]) for dmgid in self.gdb.execute(sql)]
 
-            relateddmgid = []
-            
-            for u in range(len(relateddmg)):
-                # calculate grasp plane
-                c0 = self.getPointFromPose(self.freegriprotmats[i] * dc.strToMat4(relateddmg[u][2]), Point3(0,-1,0))
-                c1 = self.getPointFromPose(self.freegriprotmats[i] * dc.strToMat4(relateddmg[u][2]), Point3(0,1,0))
-                grasp_plane = self.getPlaneWithTwoPoints(c1, c0)
-                # calculate dmg plane
-                dmg_plane = dc.strToV6(relateddmg[u][1])
-                if np.linalg.norm(grasp_plane[3:6] - dmg_plane[3:6]) <= 0.1 and (grasp_plane[3] * (dmg_plane[0] - grasp_plane[0]) + grasp_plane[4] * (dmg_plane[1] - grasp_plane[1]) + grasp_plane[5] * (dmg_plane[2] - grasp_plane[2]) < 10.0):
-                    relateddmgid.append(-int(relateddmg[u][0]))
 
             relatednodes = relatedstableplacementid + relateddmgid
 
@@ -163,90 +153,140 @@ class RegripPlanner():
                         temp.append(self.freegripid[i])
                         self.PlacementG.add_edge(*edge, graspid=temp)
 
-    def addStartGrasp(self, startrotmat4, starthandwidth):
+
+
+    def addStartGrasp(self, startrotmat4_, starthandwidth, base):
         """
         add the initial grasp into the regrasping graph, and start grasp is in numpy format.
         """
 
-        startrotmat4 = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * PosMat_t_PandaPosMax(startrotmat4)
-        starthandwidth *= 1000
+        # sql = "SELECT iddmg FROM graspid2dmgid WHERE idfreeairgrip=%d" % startgraspid
         
-        # # check which placement this grasp belong to
+        # for dmgid in self.gdb.execute(sql):
+        #     self.PlacementG.add_edge('int_g', -int(dmgid[0]), graspid=[(startrotmat4_, starthandwidth)])
+        # print("connect start grasp to ", [-int(r[0]) for r in self.gdb.execute(sql)])
+
+        startrotmat4 = PosMat_t_PandaPosMax(startrotmat4_)
+
+        startrotmat4_temp = np.copy(startrotmat4_)
+        startrotmat4_temp[0][3] *= 1000.0
+        startrotmat4_temp[1][3] *= 1000.0
+        startrotmat4_temp[2][3] *= 1000.0
+
         for p in range(len(self.placementid)):
+            currentplacementpose = PandaPosMax_t_PosMat(self.tpsmat4s[p])
+            currentplacementpose[0][3] *= 1000.0
+            currentplacementpose[1][3] *= 1000.0
+            currentplacementpose[2][3] *= 1000.0
+
             p1 = self.getPointFromPose(startrotmat4 * self.tpsmat4s[p], [0, 1, 0])
             p0 = self.getPointFromPose(startrotmat4 * self.tpsmat4s[p], [0, -1, 0])
-            if self.placementtype[p] != 0 and abs(p1[2] - p0[2]) >= 0.2:
-                continue
-
             # if the hand does not hit the ground, then this placement can connect to the goal node
-            tmphnd = self.hand
+            tmphnd = fetch_grippernm.Fetch_gripperNM(hndcolor=[1, 0, 0, 0])
             tmphnd.setJawwidth(starthandwidth)
             tmphnd.setMat(pandanpmat4 = startrotmat4 * self.tpsmat4s[p])
             # add hand model to bulletworld
             hndbullnode = cd.genCollisionMeshMultiNp(tmphnd.handnp)
             result = self.bulletworld.contactTest(hndbullnode)
-            hndbull_without_fingers_node = cd.genCollisionMeshMultiNp(tmphnd.palmnp)
-            result1 = self.bulletworldhplowest.contactTest(hndbull_without_fingers_node)
+            result1 = self.bulletworldhplowest.contactTest(hndbullnode)
+
+            tmphnd.removeNode()
             if not result.getNumContacts() and not result1.getNumContacts():
                 if self.placementtype[p] == 0: # when placement is stable
-                    self.PlacementG.add_edge('int_g', self.placementid[p], graspid=[(startrotmat4, starthandwidth)])
-                else: # when placement is unstable
-                    # need to check which dmg plane this grasp belongs to
+                    self.PlacementG.add_edge('int_g', self.placementid[p], graspid=[(startrotmat4_, starthandwidth)])
+                else:
+                    self.dmg_planner.renderObject(base, self.tpsmat4s[p])
                     sql = "SELECT dmgs.iddmg, dmgs.planevector FROM dmgs WHERE dmgs.placementid=%d " % self.placementid[p]
                     for dmgid, dmgplane in self.gdb.execute(sql):
                         dmg_plane = dc.strToV6(dmgplane)
 
                         grasp_plane = self.getPlaneWithTwoPoints(p1, p0)
                         if np.linalg.norm(grasp_plane[3:6] - dmg_plane[3:6]) <= 0.1 and (grasp_plane[3] * (dmg_plane[0] - grasp_plane[0]) + grasp_plane[4] * (dmg_plane[1] - grasp_plane[1]) + grasp_plane[5] * (dmg_plane[2] - grasp_plane[2]) < 10.0):
-                            self.PlacementG.add_edge('int_g', -int(dmgid), graspid=[(startrotmat4, starthandwidth)])
+                            
+                            # find all grasps related to the this dmg
+                            sql = "SELECT freeairgrip.rotmat FROM graspid2dmgid, freeairgrip WHERE freeairgrip.idfreeairgrip=graspid2dmgid.idfreeairgrip AND graspid2dmgid.iddmg=%d" % dmgid
+                            
+                            for graspindmg in [PandaPosMax_t_PosMat(dc.strToMat4(g[0])) for g in self.gdb.execute(sql)]:
+                                graspindmg[0][3] *= 1000.0
+                                graspindmg[1][3] *= 1000.0
+                                graspindmg[2][3] *= 1000.0
+                                if self.dmg_planner.checkCollisionBetweenGrasps(currentplacementpose.dot(startrotmat4_temp), currentplacementpose.dot(graspindmg), starthandwidth, base):
+                                    self.PlacementG.add_edge('int_g', -int(dmgid), graspid=[(startrotmat4_, starthandwidth)])
+                                    break
+                    self.dmg_planner.cleanRenderedObject(base)
 
-    def addGoalGrasp(self, goalrotmat4, goalhandwidth):
+                            
+    def addGoalGrasp(self, goalrotmat4_, goalhandwidth, base):
         """
         add target grasp into the regrasping graph, and target grasp in numpy format
         """
 
-        goalrotmat4 = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * PosMat_t_PandaPosMax(goalrotmat4)
-        goalhandwidth *= 1000
+        # sql = "SELECT iddmg FROM graspid2dmgid WHERE idfreeairgrip=%d" % goalgraspid
+        # for dmgid in self.gdb.execute(sql):
+        #     self.PlacementG.add_edge('end_g', -int(dmgid[0]), graspid=[(goalrotmat4, goalhandwidth)])
 
-        # # check which placement this grasp belong to
+        goalrotmat4 = PosMat_t_PandaPosMax(goalrotmat4_)
+
+        goalrotmat4_temp = np.copy(goalrotmat4_)
+        goalrotmat4_temp[0][3] *= 1000.0
+        goalrotmat4_temp[1][3] *= 1000.0
+        goalrotmat4_temp[2][3] *= 1000.0
+
         for p in range(len(self.placementid)):
+            currentplacementpose = PandaPosMax_t_PosMat(self.tpsmat4s[p])
+            currentplacementpose[0][3] *= 1000.0
+            currentplacementpose[1][3] *= 1000.0
+            currentplacementpose[2][3] *= 1000.0
+
             p1 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [0, 1, 0])
             p0 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [0, -1, 0])
-            if self.placementtype[p] != 0 and abs(p1[2] - p0[2]) >= 0.2:
-                continue
-
             # if the hand does not hit the ground, then this placement can connect to the goal node
-            tmphnd = self.hand
+            tmphnd = fetch_grippernm.Fetch_gripperNM(hndcolor=[1, 0, 0, 0])
             tmphnd.setJawwidth(goalhandwidth)
             tmphnd.setMat(pandanpmat4 = goalrotmat4 * self.tpsmat4s[p])
             # add hand model to bulletworld
             hndbullnode = cd.genCollisionMeshMultiNp(tmphnd.handnp)
             result = self.bulletworld.contactTest(hndbullnode)
-            hndbull_without_fingers_node = cd.genCollisionMeshMultiNp(tmphnd.palmnp)
-            result1 = self.bulletworldhplowest.contactTest(hndbull_without_fingers_node)
+            result1 = self.bulletworldhplowest.contactTest(hndbullnode)
+
+            tmphnd.removeNode()
             if not result.getNumContacts() and not result1.getNumContacts():
-                if self.placementtype[p] == 0:
-                    addededge = ('end_g', self.placementid[p])
-                    if not self.PlacementG.has_edge(*addededge):
-                        self.PlacementG.add_edge(*addededge, graspid = [(goalrotmat4, goalhandwidth)])
-                    else:
-                        temp = self.PlacementG.edges['end_g', self.placementid[p]]['graspid']
-                        temp.append((goalrotmat4, goalhandwidth))
-                        self.PlacementG.add_edge(*addededge, graspid = temp)
+                if self.placementtype[p] == 0: # when placement is stable
+                    self.PlacementG.add_edge('end_g', self.placementid[p], graspid=[(goalrotmat4_, goalhandwidth)])
                 else:
+                    self.dmg_planner.renderObject(base, self.tpsmat4s[p])
                     sql = "SELECT dmgs.iddmg, dmgs.planevector FROM dmgs WHERE dmgs.placementid=%d " % self.placementid[p]
                     for dmgid, dmgplane in self.gdb.execute(sql):
-                        addededge = ('end_g', -int(dmgid))
                         dmg_plane = dc.strToV6(dmgplane)
+
                         grasp_plane = self.getPlaneWithTwoPoints(p1, p0)
                         if np.linalg.norm(grasp_plane[3:6] - dmg_plane[3:6]) <= 0.1 and (grasp_plane[3] * (dmg_plane[0] - grasp_plane[0]) + grasp_plane[4] * (dmg_plane[1] - grasp_plane[1]) + grasp_plane[5] * (dmg_plane[2] - grasp_plane[2]) < 10.0):
-                            if not self.PlacementG.has_edge(*addededge):
-                                self.PlacementG.add_edge(*addededge, graspid = [(goalrotmat4, goalhandwidth)])
-                            else:
-                                temp = self.PlacementG.edges['end_g', self.placementid[p]]['graspid']
-                                temp.append((goalrotmat4, goalhandwidth))
-                                self.PlacementG.add_edge(*addededge, graspid = temp)
                             
+                            # find all grasps related to the this dmg
+                            sql = "SELECT freeairgrip.rotmat FROM graspid2dmgid, freeairgrip WHERE freeairgrip.idfreeairgrip=graspid2dmgid.idfreeairgrip AND graspid2dmgid.iddmg=%d" % dmgid
+                            
+                            for graspindmg in [PandaPosMax_t_PosMat(dc.strToMat4(g[0])) for g in self.gdb.execute(sql)]:
+                                graspindmg[0][3] *= 1000.0
+                                graspindmg[1][3] *= 1000.0
+                                graspindmg[2][3] *= 1000.0
+                                if self.dmg_planner.checkCollisionBetweenGrasps(currentplacementpose.dot(goalrotmat4_temp), currentplacementpose.dot(graspindmg), goalhandwidth, base):
+                                    self.PlacementG.add_edge('end_g', -int(dmgid), graspid=[(goalrotmat4_, goalhandwidth)])
+                                    break
+                    self.dmg_planner.cleanRenderedObject(base)
+
+    def reset(self):
+        self.PlacementG.remove_node(self.inital_grasp)
+        self.PlacementG.remove_node(self.end_grasp)
+        self.PlacementG.add_node(self.inital_grasp, stable=-1)
+        self.PlacementG.add_node(self.end_grasp, stable=-2, placement=-1)
+
+    def has_path(self):
+        return nx.has_path(self.PlacementG, self.inital_grasp, self.end_grasp)
+
+    def find_path(self):
+        paths = nx.all_shortest_paths(self.PlacementG, self.inital_grasp, self.end_grasp)
+        print([p for p in paths])
+
     def find_shortest_PlacementG_path(self):
         """"
         this function will return all possible shortest path
@@ -259,7 +299,8 @@ class RegripPlanner():
             path_and_type = []
             for p in path:
                 type = self.PlacementG.nodes[p]["stable"]
-                path_and_type.append((p,type))
+                real_placement_id = self.PlacementG.nodes[p]["placement"]
+                path_and_type.append((p,type,real_placement_id))
             results.append(path_and_type)
         return results
 
@@ -290,13 +331,20 @@ class RegripPlanner():
         results = []
         for grasppose, jawwidth in zip(self.freegriprotmats, self.freegripjawwidth): 
 
-            grasppose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * grasppose
+            # grasppose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * grasppose
             # need to convert it bakc to normal metrics
             results.append((np.array([[grasppose[0][0],grasppose[1][0],grasppose[2][0],grasppose[3][0]/1000.0], \
                                      [grasppose[0][1],grasppose[1][1],grasppose[2][1],grasppose[3][1]/1000.0], \
                                      [grasppose[0][2],grasppose[1][2],grasppose[2][2],grasppose[3][2]/1000.0], \
-                                     [grasppose[0][3],grasppose[1][3],grasppose[2][3],grasppose[3][3]]]), jawwidth/1000.0))
+                                     [grasppose[0][3],grasppose[1][3],grasppose[2][3],grasppose[3][3]]]), jawwidth))
         return results
+
+    def getRandomGraspId(self):
+        sql = "SELECT freeairgrip.idfreeairgrip, freeairgrip.rotmat FROM freeairgrip WHERE freeairgrip.idobject=%d" % (self.objectid)
+        result = self.gdb.execute(sql)
+        random_index = random.randint(0,len(result)-1)
+
+        return int(result[random_index][0]), PandaPosMax_t_PosMat(dc.strToMat4(result[random_index][1]))
 
     def getGraspsById(self, graspids):
         """
@@ -311,8 +359,9 @@ class RegripPlanner():
             result = self.gdb.execute(sql)
             if len(result) == 0:
                 continue
-            grasppose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * dc.strToMat4(result[0][0])
-            jawwidth = float(result[0][1]) / 1000
+            # grasppose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * dc.strToMat4(result[0][0])
+            grasppose = dc.strToMat4(result[0][0])
+            jawwidth = float(result[0][1])
             # need to convert it back to normal metrics
             results.append((np.array([[grasppose[0][0],grasppose[1][0],grasppose[2][0],grasppose[3][0]/1000.0], \
                                      [grasppose[0][1],grasppose[1][1],grasppose[2][1],grasppose[3][1]/1000.0], \
@@ -421,6 +470,7 @@ class RegripPlanner():
                 colormap.append(0)
         edge_labels = nx.get_edge_attributes(g, "numofgrasps")
         pos = nx.spring_layout(g, k=0.75, iterations=20)
+        print("number of connected co", nx.number_connected_components(g))
         # nx.draw(g, pos, with_labels=True, node_color=colormap, node_size=400)
         nx.draw_networkx_edge_labels(g, pos, edge_labels=edge_labels)
         nx.draw(g, pos, with_labels=True, node_color=colormap)
@@ -483,7 +533,8 @@ if __name__=='__main__':
         # target grasps (grasp pose(in numpy format), jawwidth(in meter))
         init_grasps = []
         for grasppose, jawwidth in initgrasp_result:
-            init_grasps.append((PandaPosMax_t_PosMat(pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * dc.strToMat4(grasppose)), float(jawwidth) / 1000))
+            # init_grasps.append((PandaPosMax_t_PosMat(pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * dc.strToMat4(grasppose)), float(jawwidth) / 1000))
+            init_grasps.append((PandaPosMax_t_PosMat(dc.strToMat4(grasppose)), float(jawwidth)))
 
         return True, init_grasps
 
@@ -502,7 +553,8 @@ if __name__=='__main__':
         # target grasps (grasp pose(in numpy format), jawwidth(in meter))
         target_grasps = []
         for grasppose, jawwidth in targetgrasp_result:
-            target_grasps.append((PandaPosMax_t_PosMat(pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * dc.strToMat4(grasppose)), float(jawwidth) / 1000))
+            # target_grasps.append((PandaPosMax_t_PosMat(pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * dc.strToMat4(grasppose)), float(jawwidth) / 1000))
+            target_grasps.append((PandaPosMax_t_PosMat(dc.strToMat4(grasppose)), float(jawwidth)))
 
         return True, target_grasps
 
