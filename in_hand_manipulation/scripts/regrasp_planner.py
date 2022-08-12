@@ -9,6 +9,7 @@ from panda3d.bullet import BulletWorld
 from panda3d.core import *
 
 from manipulation.grip.fetch_gripper import fetch_grippernm
+from scipy.spatial.transform import Rotation as R
 
 import pandaplotutils.pandageom as pandageom
 import trimesh
@@ -21,6 +22,7 @@ import tf
 import pandaplotutils.pandactrl as pandactrl
 
 import networkx as nx
+from networkx.drawing.nx_agraph import graphviz_layout
 from  tf_util import PandaPosMax_t_PosMat, PosMat_t_PandaPosMax
 import random
 
@@ -54,7 +56,6 @@ class RegripPlanner():
         self.bulletworldhplowest.attachRigidBody(self.planebullnode1)
 
         self.gdb = gdb
-
         self.dmg_planner = dmg_planner
 
         self.__loadFreeAirGrip()
@@ -64,10 +65,7 @@ class RegripPlanner():
         self.objectid = self.gdb.loadIdObject(self.dbobjname)
 
         self.inital_grasp = "int_g"
-        self.PlacementG.add_node(self.inital_grasp, stable=-1)
-
         self.end_grasp = "end_g"
-        self.PlacementG.add_node(self.end_grasp, stable=-2, placement=-1)
 
 
     def __loadFreeAirGrip(self):
@@ -112,47 +110,73 @@ class RegripPlanner():
         plane_center = np.array([p1[0] + p0[0], p1[1] + p0[1], p1[2] + p0[2]]) / 2
         return np.concatenate((plane_center, normal_direction))
 
-    def removeEdgeOnG(self, p1, p2):
-        self.PlacementG.remove_edge(p1, p2)
+    def removeEdge(self, graspid1, graspid2):
+        self.PlacementG.remove_edge(graspid1, graspid2)
 
     def CreatePlacementGraph(self):
         """
         when you create the node, each stable placement and fixtureless fixturing motion plane will be considered
         as one.
         """
-        # create the nodes in the graph
+
+        # create nodes for grasp poses
+        for g in range(len(self.freegripid)):
+            self.PlacementG.add_node(self.freegripid[g], pose=PandaPosMax_t_PosMat(self.freegriprotmats[g]), jawwidth = self.freegripjawwidth[g] / 1000.0)
+        
+        ## build the connections between nodes
+        ## if the placement is stable
         for p in range(len(self.placementid)):
             if self.placementtype[p] == 0: # insert a stable placement into the graph
-                self.PlacementG.add_node(self.placementid[p], stable=self.placementtype[p], placement=self.placementid[p])
-            else:
-                # search for the dmg belong to this ff placement, and dmg will be represented as a negative value.
-                for dmgid in self.gdb.execute("SELECT dmgs.iddmg FROM dmgs WHERE dmgs.placementid=%d" % self.placementid[p]):
-                    self.PlacementG.add_node(-int(dmgid[0]), stable=self.placementtype[p], placement=self.placementid[p])
+                
+                # sample a set of placement poses of this placement id
+                placementposeset = []
+                pose_0 = PandaPosMax_t_PosMat(self.tpsmat4s[p])
+                for tableangle in [0.0, 1.5707963267948966, 3.141592653589793, 4.71238898038469]:
+                    rotationInZ = np.identity(4)
+                    rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
+                    placementposeset.append([pose_0.dot(rotationInZ), 'stable', self.placementid[p]])
 
-        check = True
-        # create the edges in the graph
-        for i in range(len(self.freegripid)):
-            # get stable placement ids belong to current grasp
-            sql = "SELECT freetabletopgrip.idfreetabletopplacement FROM freetabletopgrip, freetabletopplacement WHERE \
-                freetabletopgrip.idfreeairgrip=%d AND freetabletopplacement.idfreetabletopplacement=freetabletopgrip.idfreetabletopplacement \
-                AND freetabletopplacement.placement=0 " % self.freegripid[i]
-            relatedstableplacementid = self.gdb.execute(sql)
+                sql = "SELECT idfreeairgrip FROM freetabletopgrip WHERE idfreetabletopplacement=%d" % self.placementid[p]
+                relativeGraspids = [int(item[0]) for item in self.gdb.execute(sql)]
+                if len(relativeGraspids) > 1:
+                    for edge in list(itertools.combinations(relativeGraspids, 2)):
+                        if not self.PlacementG.has_edge(*edge):
+                            self.PlacementG.add_edge(*edge, placementposes=placementposeset)
+                        else:
+                            temp = self.PlacementG.edges[edge[0],edge[1]]['placementposes']
+                            self.PlacementG.add_edge(*edge, placementposes=temp + placementposeset)
 
-            sql = "SELECT iddmg FROM graspid2dmgid WHERE idfreeairgrip=%d" % self.freegripid[i]
-            relateddmgid = [-int(dmgid[0]) for dmgid in self.gdb.execute(sql)]
+        # if placement is unstable
+        sql = "SELECT iddmg, placementpose FROM dmgs"
+        result = self.gdb.execute(sql)
+        for r in result:
+            dmgid = int(r[0])
+            pose_0 = PandaPosMax_t_PosMat(dc.strToMat4(r[1]))
+            placementposeset = []
+            for tableangle in [0.0, 1.5707963267948966, 3.141592653589793, 4.71238898038469]:
+                rotationInZ = np.identity(4)
+                rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
+                placementposeset.append([pose_0.dot(rotationInZ), 'unstable', dmgid])
 
 
-            relatednodes = relatedstableplacementid + relateddmgid
+            sql = "SELECT idfreeairgrip FROM graspid2dmgid WHERE iddmg=%d" % dmgid
+            relativeGraspids = [int(item[0]) for item in self.gdb.execute(sql)]
 
-            if len(relatednodes) > 1:
-                for edge in list(itertools.combinations(relatednodes, 2)):
+            if len(relativeGraspids) > 1:
+                for edge in list(itertools.combinations(relativeGraspids, 2)):
                     if not self.PlacementG.has_edge(*edge):
-                        self.PlacementG.add_edge(*edge, graspid=[self.freegripid[i]])
+                        self.PlacementG.add_edge(*edge, placementposes=placementposeset)
                     else:
-                        temp = self.PlacementG.edges[edge[0],edge[1]]['graspid']
-                        temp.append(self.freegripid[i])
-                        self.PlacementG.add_edge(*edge, graspid=temp)
-
+                        temp = self.PlacementG.edges[edge[0],edge[1]]['placementposes']
+                        self.PlacementG.add_edge(*edge, placementposes=temp + placementposeset)
+        
+        # remove the grasp which can't be used for re-grasping
+        deletenodeindex = []
+        for n in self.PlacementG:
+            if len(list(self.PlacementG[n])) == 0:
+                deletenodeindex.append(n)
+        for d in deletenodeindex:
+            self.PlacementG.remove_node(d)
 
 
     def addStartGrasp(self, startrotmat4_, starthandwidth, base):
@@ -165,9 +189,9 @@ class RegripPlanner():
         # for dmgid in self.gdb.execute(sql):
         #     self.PlacementG.add_edge('int_g', -int(dmgid[0]), graspid=[(startrotmat4_, starthandwidth)])
         # print("connect start grasp to ", [-int(r[0]) for r in self.gdb.execute(sql)])
-
+    
         startrotmat4 = PosMat_t_PandaPosMax(startrotmat4_)
-
+        self.PlacementG.add_node(self.inital_grasp, pose=startrotmat4_, jawwidth = starthandwidth)
         startrotmat4_temp = np.copy(startrotmat4_)
         startrotmat4_temp[0][3] *= 1000.0
         startrotmat4_temp[1][3] *= 1000.0
@@ -183,7 +207,7 @@ class RegripPlanner():
             p0 = self.getPointFromPose(startrotmat4 * self.tpsmat4s[p], [0, -1, 0])
             # if the hand does not hit the ground, then this placement can connect to the goal node
             tmphnd = fetch_grippernm.Fetch_gripperNM(hndcolor=[1, 0, 0, 0])
-            tmphnd.setJawwidth(starthandwidth)
+            tmphnd.setJawwidth(starthandwidth*1000.0)
             tmphnd.setMat(pandanpmat4 = startrotmat4 * self.tpsmat4s[p])
             # add hand model to bulletworld
             hndbullnode = cd.genCollisionMeshMultiNp(tmphnd.handnp)
@@ -193,25 +217,48 @@ class RegripPlanner():
             tmphnd.removeNode()
             if not result.getNumContacts() and not result1.getNumContacts():
                 if self.placementtype[p] == 0: # when placement is stable
-                    self.PlacementG.add_edge('int_g', self.placementid[p], graspid=[(startrotmat4_, starthandwidth)])
+                    # sample a set of placement poses of this placement id
+                    placementposeset = []
+                    pose_0 = PandaPosMax_t_PosMat(self.tpsmat4s[p])
+                    for tableangle in [0.0, 1.5707963267948966, 3.141592653589793, 4.71238898038469]:
+                        rotationInZ = np.identity(4)
+                        rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
+                        placementposeset.append([pose_0.dot(rotationInZ), 'stable', self.placementid[p]])
+
+                    sql = "SELECT idfreeairgrip FROM freetabletopgrip WHERE idfreetabletopplacement=%d" % self.placementid[p]
+                    relativeGraspids = [int(item[0]) for item in self.gdb.execute(sql)]
+                    for g in relativeGraspids:
+                        self.PlacementG.add_edge(self.inital_grasp , g, placementposes=placementposeset)
                 else:
+
                     self.dmg_planner.renderObject(base, self.tpsmat4s[p])
                     sql = "SELECT dmgs.iddmg, dmgs.planevector FROM dmgs WHERE dmgs.placementid=%d " % self.placementid[p]
                     for dmgid, dmgplane in self.gdb.execute(sql):
+                        # sample a set of placement poses of this placement id
+                        placementposeset = []
+                        pose_0 = PandaPosMax_t_PosMat(self.tpsmat4s[p])
+                        for tableangle in [0.0, 1.5707963267948966, 3.141592653589793, 4.71238898038469]:
+                            rotationInZ = np.identity(4)
+                            rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
+                            placementposeset.append([pose_0.dot(rotationInZ), 'unstable', dmgid])
+
                         dmg_plane = dc.strToV6(dmgplane)
 
                         grasp_plane = self.getPlaneWithTwoPoints(p1, p0)
                         if np.linalg.norm(grasp_plane[3:6] - dmg_plane[3:6]) <= 0.1 and (grasp_plane[3] * (dmg_plane[0] - grasp_plane[0]) + grasp_plane[4] * (dmg_plane[1] - grasp_plane[1]) + grasp_plane[5] * (dmg_plane[2] - grasp_plane[2]) < 10.0):
-                            
                             # find all grasps related to the this dmg
+                            sql = "SELECT idfreeairgrip FROM graspid2dmgid WHERE iddmg=%d" % dmgid
+                            relativeGraspids = [int(item[0]) for item in self.gdb.execute(sql)]
+
                             sql = "SELECT freeairgrip.rotmat FROM graspid2dmgid, freeairgrip WHERE freeairgrip.idfreeairgrip=graspid2dmgid.idfreeairgrip AND graspid2dmgid.iddmg=%d" % dmgid
                             
-                            for graspindmg in [PandaPosMax_t_PosMat(dc.strToMat4(g[0])) for g in self.gdb.execute(sql)]:
-                                graspindmg[0][3] *= 1000.0
-                                graspindmg[1][3] *= 1000.0
-                                graspindmg[2][3] *= 1000.0
-                                if self.dmg_planner.checkCollisionBetweenGrasps(currentplacementpose.dot(startrotmat4_temp), currentplacementpose.dot(graspindmg), starthandwidth, base):
-                                    self.PlacementG.add_edge('int_g', -int(dmgid), graspid=[(startrotmat4_, starthandwidth)])
+                            for grasppose in [PandaPosMax_t_PosMat(dc.strToMat4(gp[0])) for gp in self.gdb.execute(sql)]:
+                                grasppose[0][3] *= 1000.0
+                                grasppose[1][3] *= 1000.0
+                                grasppose[2][3] *= 1000.0
+                                if self.dmg_planner.checkCollisionBetweenGrasps(currentplacementpose.dot(startrotmat4_temp), currentplacementpose.dot(grasppose), starthandwidth * 1000.0, base):
+                                    for g in relativeGraspids:
+                                        self.PlacementG.add_edge(self.inital_grasp, g, placementposes=placementposeset)
                                     break
                     self.dmg_planner.cleanRenderedObject(base)
 
@@ -226,6 +273,7 @@ class RegripPlanner():
         #     self.PlacementG.add_edge('end_g', -int(dmgid[0]), graspid=[(goalrotmat4, goalhandwidth)])
 
         goalrotmat4 = PosMat_t_PandaPosMax(goalrotmat4_)
+        self.PlacementG.add_node(self.end_grasp, pose=goalrotmat4_, jawwidth = goalhandwidth)
 
         goalrotmat4_temp = np.copy(goalrotmat4_)
         goalrotmat4_temp[0][3] *= 1000.0
@@ -242,7 +290,7 @@ class RegripPlanner():
             p0 = self.getPointFromPose(goalrotmat4 * self.tpsmat4s[p], [0, -1, 0])
             # if the hand does not hit the ground, then this placement can connect to the goal node
             tmphnd = fetch_grippernm.Fetch_gripperNM(hndcolor=[1, 0, 0, 0])
-            tmphnd.setJawwidth(goalhandwidth)
+            tmphnd.setJawwidth(goalhandwidth * 1000.0)
             tmphnd.setMat(pandanpmat4 = goalrotmat4 * self.tpsmat4s[p])
             # add hand model to bulletworld
             hndbullnode = cd.genCollisionMeshMultiNp(tmphnd.handnp)
@@ -252,40 +300,66 @@ class RegripPlanner():
             tmphnd.removeNode()
             if not result.getNumContacts() and not result1.getNumContacts():
                 if self.placementtype[p] == 0: # when placement is stable
-                    self.PlacementG.add_edge('end_g', self.placementid[p], graspid=[(goalrotmat4_, goalhandwidth)])
+                    # sample a set of placement poses of this placement id
+                    placementposeset = []
+                    pose_0 = PandaPosMax_t_PosMat(self.tpsmat4s[p])
+                    for tableangle in [0.0, 1.5707963267948966, 3.141592653589793, 4.71238898038469]:
+                        rotationInZ = np.identity(4)
+                        rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
+                        placementposeset.append([pose_0.dot(rotationInZ), 'stable', self.placementid[p]])
+
+                    sql = "SELECT idfreeairgrip FROM freetabletopgrip WHERE idfreetabletopplacement=%d" % self.placementid[p]
+                    relativeGraspids = [int(item[0]) for item in self.gdb.execute(sql)]
+                    for g in relativeGraspids:
+                        self.PlacementG.add_edge(self.end_grasp , g, placementposes=placementposeset)
                 else:
+
                     self.dmg_planner.renderObject(base, self.tpsmat4s[p])
                     sql = "SELECT dmgs.iddmg, dmgs.planevector FROM dmgs WHERE dmgs.placementid=%d " % self.placementid[p]
                     for dmgid, dmgplane in self.gdb.execute(sql):
+                        # sample a set of placement poses of this placement id
+                        placementposeset = []
+                        pose_0 = PandaPosMax_t_PosMat(self.tpsmat4s[p])
+                        for tableangle in [0.0, 1.5707963267948966, 3.141592653589793, 4.71238898038469]:
+                            rotationInZ = np.identity(4)
+                            rotationInZ[:3,:3] = R.from_rotvec(tableangle * np.array([0,0,1])).as_dcm()
+                            placementposeset.append([pose_0.dot(rotationInZ), 'unstable', dmgid])
+
                         dmg_plane = dc.strToV6(dmgplane)
 
                         grasp_plane = self.getPlaneWithTwoPoints(p1, p0)
                         if np.linalg.norm(grasp_plane[3:6] - dmg_plane[3:6]) <= 0.1 and (grasp_plane[3] * (dmg_plane[0] - grasp_plane[0]) + grasp_plane[4] * (dmg_plane[1] - grasp_plane[1]) + grasp_plane[5] * (dmg_plane[2] - grasp_plane[2]) < 10.0):
-                            
                             # find all grasps related to the this dmg
+                            sql = "SELECT idfreeairgrip FROM graspid2dmgid WHERE iddmg=%d" % dmgid
+                            relativeGraspids = [int(item[0]) for item in self.gdb.execute(sql)]
+
                             sql = "SELECT freeairgrip.rotmat FROM graspid2dmgid, freeairgrip WHERE freeairgrip.idfreeairgrip=graspid2dmgid.idfreeairgrip AND graspid2dmgid.iddmg=%d" % dmgid
                             
-                            for graspindmg in [PandaPosMax_t_PosMat(dc.strToMat4(g[0])) for g in self.gdb.execute(sql)]:
-                                graspindmg[0][3] *= 1000.0
-                                graspindmg[1][3] *= 1000.0
-                                graspindmg[2][3] *= 1000.0
-                                if self.dmg_planner.checkCollisionBetweenGrasps(currentplacementpose.dot(goalrotmat4_temp), currentplacementpose.dot(graspindmg), goalhandwidth, base):
-                                    self.PlacementG.add_edge('end_g', -int(dmgid), graspid=[(goalrotmat4_, goalhandwidth)])
+                            for grasppose in [PandaPosMax_t_PosMat(dc.strToMat4(gp[0])) for gp in self.gdb.execute(sql)]:
+                                grasppose[0][3] *= 1000.0
+                                grasppose[1][3] *= 1000.0
+                                grasppose[2][3] *= 1000.0
+                                if self.dmg_planner.checkCollisionBetweenGrasps(currentplacementpose.dot(goalrotmat4_temp), currentplacementpose.dot(grasppose), goalhandwidth * 1000.0, base):
+                                    for g in relativeGraspids:
+                                        self.PlacementG.add_edge(self.end_grasp, g, placementposes=placementposeset)
                                     break
                     self.dmg_planner.cleanRenderedObject(base)
 
     def reset(self):
         self.PlacementG.remove_node(self.inital_grasp)
         self.PlacementG.remove_node(self.end_grasp)
-        self.PlacementG.add_node(self.inital_grasp, stable=-1)
-        self.PlacementG.add_node(self.end_grasp, stable=-2, placement=-1)
 
     def has_path(self):
         return nx.has_path(self.PlacementG, self.inital_grasp, self.end_grasp)
 
-    def find_path(self):
-        paths = nx.all_shortest_paths(self.PlacementG, self.inital_grasp, self.end_grasp)
-        print([p for p in paths])
+    def find_first_level_path(self):
+        path = nx.shortest_path(self.PlacementG, self.inital_grasp, self.end_grasp)
+        grasps = [self.PlacementG.node[p]['pose'] for p in path]
+        jawwidths = [self.PlacementG.node[p]['jawwidth'] for p in path]
+        return path, grasps, jawwidths
+
+    def findRegraspAction(self, placegraspid, pickgraspid):
+        return self.PlacementG[placegraspid][pickgraspid]['placementposes']
 
     def find_shortest_PlacementG_path(self):
         """"
@@ -322,23 +396,6 @@ class RegripPlanner():
             print("error, no Placement path be grasp points")
         return grasp_traj
 
-    def getAllGrasps(self):
-        """
-        get all grasp poses in normal format and jawwdith in meter unit
-        this function will return a list like
-        [(pose1, jawwidth1), (pose2, jawwidth2), ...]
-        """
-        results = []
-        for grasppose, jawwidth in zip(self.freegriprotmats, self.freegripjawwidth): 
-
-            # grasppose = pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * grasppose
-            # need to convert it bakc to normal metrics
-            results.append((np.array([[grasppose[0][0],grasppose[1][0],grasppose[2][0],grasppose[3][0]/1000.0], \
-                                     [grasppose[0][1],grasppose[1][1],grasppose[2][1],grasppose[3][1]/1000.0], \
-                                     [grasppose[0][2],grasppose[1][2],grasppose[2][2],grasppose[3][2]/1000.0], \
-                                     [grasppose[0][3],grasppose[1][3],grasppose[2][3],grasppose[3][3]]]), jawwidth))
-        return results
-
     def getRandomGraspId(self):
         sql = "SELECT freeairgrip.idfreeairgrip, freeairgrip.rotmat FROM freeairgrip WHERE freeairgrip.idobject=%d" % (self.objectid)
         result = self.gdb.execute(sql)
@@ -366,20 +423,7 @@ class RegripPlanner():
             results.append((np.array([[grasppose[0][0],grasppose[1][0],grasppose[2][0],grasppose[3][0]/1000.0], \
                                      [grasppose[0][1],grasppose[1][1],grasppose[2][1],grasppose[3][1]/1000.0], \
                                      [grasppose[0][2],grasppose[1][2],grasppose[2][2],grasppose[3][2]/1000.0], \
-                                     [grasppose[0][3],grasppose[1][3],grasppose[2][3],grasppose[3][3]]]), jawwidth))
-        return results
-
-    def getGraspIdsByPlacementId(self, placementid):
-        """
-        given the placement id, this function will return all grasp id related to it.
-        """
-        results = []
-        sql =  "SELECT freetabletopgrip.idfreeairgrip FROM freetabletopgrip WHERE freetabletopgrip.idfreetabletopplacement=%d \
-                    " % placementid
-        result = self.gdb.execute(sql)
-
-        for i in range(len(result)):
-            results.append(int(result[i][0]))
+                                     [grasppose[0][3],grasppose[1][3],grasppose[2][3],grasppose[3][3]]]), jawwidth/1000.0))
         return results
 
     def getGroundDirection(self, pose):
@@ -428,155 +472,25 @@ class RegripPlanner():
                                      [placementpose[0][3],placementpose[1][3],placementpose[2][3],placementpose[3][3]]]))
         return results
 
-    def getGraspsbyPlacementPose(self, placementTransform):
-        """
-        given object pose, this function use find the most similar placement according to the rotation
-        part of the matrix, then return all grasps related to this pose.
-        """
-        t,r = placementTransform
-        tran_base_object_pos = tf.TransformerROS().fromTranslationRotation(t,r)
-        matched_obj_placement_id = self.getPlacementIdFromPose(tran_base_object_pos) #gets the most likly object placement given pose
-        gripper_id_list = self.getGraspIdsByPlacementId(matched_obj_placement_id)
-        return self.getGraspsById(gripper_id_list) # List of pos that that match placement
-
-    def getCommonGraspids(self, p1, p2):
-        return self.PlacementG[p1][p2]['graspid']
-
-    # def showPlacementSequence(self, sequence, base):
-    #     distancebetweencell = 300
-    #     numOfP = len(sequence)
-    #     showtable = np.zeros(numOfP)
-    #     for i in range(len(showtable)):
-    #         showtable[i] = (i - int(numOfP/2)) * distancebetweencell
-
     def showgraph(self):
         """
         Show the re-grasping graph.
         """
-        g = self.PlacementG
-        colormap = []
-        for node1, node2, data in g.edges(data=True):
-            if data.has_key('graspid'):
-                g[node1][node2]['numofgrasps'] = len(data['graspid'])
-            else:
-                g[node1][node2]['numofgrasps'] = 0 # here can only happen to initial grasp
-            # print g[e[0]][e[1]], g[e[0]][e[1]]['graspid'] 
-        for n in g.nodes:
-            if g.node[n]['stable'] == 0:
-                colormap.append(g.node[n]['placement'])
-            elif g.node[n]['stable'] == 1:
-                colormap.append(g.node[n]['placement'])
-            else:
-                colormap.append(0)
-        edge_labels = nx.get_edge_attributes(g, "numofgrasps")
-        pos = nx.spring_layout(g, k=0.75, iterations=20)
-        print("number of connected co", nx.number_connected_components(g))
+        # for node1, node2, data in g.edges(data=True):
+        #     if data.has_key('placementposes'):
+        #         g[node1][node2]['numofgrasps'] = len(data['placementposes'])
+        #     else:
+        #         g[node1][node2]['numofgrasps'] = 0 # here can only happen to initial grasp
+            # print g[e[0]][e[1]], g[e[0]][e[1]]['placementposes'] 
+
+        # edge_labels = nx.get_edge_attributes(g, "numofgrasps")
+        print("number of connected co", nx.number_connected_components(self.PlacementG))
         # nx.draw(g, pos, with_labels=True, node_color=colormap, node_size=400)
-        nx.draw_networkx_edge_labels(g, pos, edge_labels=edge_labels)
-        nx.draw(g, pos, with_labels=True, node_color=colormap)
+        # nx.draw_networkx_edge_labels(g, edge_labels=edge_labels)
+        nx.draw(self.PlacementG, with_labels=True)
         
         plt.draw()
         plt.show()
 
-    def plotObject(self, base):
-        geomnodeobj = GeomNode('obj')
-        geomnodeobj.addGeom(self.objgeom)
-        npnodeobj = NodePath('obj')
-        npnodeobj.attachNewNode(geomnodeobj)
-        npnodeobj.reparentTo(base.render)
-        pandageom.plotAxisSelf(base.render, spos=Vec3(0,0,0))
-
-    def showHand(self, hndjawwidth, hndrotmat, base):
-
-        self.handtmp = fetch_grippernm.Fetch_gripperNM(hndcolor=[0, 1, 0, .5])
-        self.handtmp.setMat(pandanpmat4=hndrotmat)
-        self.handtmp.setJawwidth(hndjawwidth)
-        self.handtmp.reparentTo(base.render)
-
-    def showFrame(self, base):
-        wp = WindowProperties()
-        wp.setFullscreen(False)
-        wp.setSize(800, 600)
-        base.win.requestProperties(wp)
-
-        base.disableMouse()
-        base.cam.setPos(0, 1000, 0)
-        base.cam.lookAt(0,0,0)
-
-        base.graphicsEngine.renderFrame()
-        base.graphicsEngine.renderFrame()
-
 if __name__=='__main__':
-    object_name = "book"
-
-    base = pandactrl.World(camp=[700,300,1400], lookatp=[0,0,0])
-    # this_dir, this_filename = os.path.split(__file__)
-    this_dir, this_filename = os.path.split(os.path.realpath(__file__))
-    objpath = os.path.join(os.path.split(this_dir)[0], "objects", object_name + ".stl")
-    handpkg = fetch_grippernm  #SQL grasping database interface 
-    gdb = db.GraspDB()   #SQL grasping database interface
-
-    planner = RegripPlanner(objpath, handpkg, gdb)
-
-    def getInitGrasps(gdb, object_name):
-        sql = "SELECT * FROM object WHERE object.name LIKE '%s'" % object_name
-        result = gdb.execute(sql)
-        if not result:
-            print "please add the object name to the table first!!"
-            return False, None
-        else:
-            objectId = int(result[0][0])
-
-        sql = "SELECT grasppose, jawwidth FROM initgrasps WHERE idobject = '%d'" % objectId
-        initgrasp_result = gdb.execute(sql)
-
-        # target grasps (grasp pose(in numpy format), jawwidth(in meter))
-        init_grasps = []
-        for grasppose, jawwidth in initgrasp_result:
-            # init_grasps.append((PandaPosMax_t_PosMat(pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * dc.strToMat4(grasppose)), float(jawwidth) / 1000))
-            init_grasps.append((PandaPosMax_t_PosMat(dc.strToMat4(grasppose)), float(jawwidth)))
-
-        return True, init_grasps
-
-    def getTargetGrasps(gdb, object_name):
-        sql = "SELECT * FROM object WHERE object.name LIKE '%s'" % object_name
-        result = gdb.execute(sql)
-        if not result:
-            print "please add the object name to the table first!!"
-            return False, None
-        else:
-            objectId = int(result[0][0])
-
-        sql = "SELECT grasppose, jawwidth FROM targetgrasps WHERE idobject = '%d'" % objectId
-        targetgrasp_result = gdb.execute(sql)
-
-        # target grasps (grasp pose(in numpy format), jawwidth(in meter))
-        target_grasps = []
-        for grasppose, jawwidth in targetgrasp_result:
-            # target_grasps.append((PandaPosMax_t_PosMat(pandageom.cvtMat4(rm.rodrigues([0, 1, 0], 180)) * dc.strToMat4(grasppose)), float(jawwidth) / 1000))
-            target_grasps.append((PandaPosMax_t_PosMat(dc.strToMat4(grasppose)), float(jawwidth)))
-
-        return True, target_grasps
-
-    result, init_grasp = getInitGrasps(gdb,object_name)
-    if not result:
-        print "no initial grasp given"
-        exit()
-    result, target_grasps = getTargetGrasps(gdb,object_name)
-    if not result:
-        print "no target grasp given"
-        exit()
-
-    planner.CreatePlacementGraph()
-
-    # add init grasps into the graph
-    for grasp, jawwidth in init_grasp:
-        print grasp
-        print jawwidth
-        planner.addStartGrasp(grasp, jawwidth)
-
-    # add goal grasps into the graph
-    for grasp, jawwidth in target_grasps:
-        planner.addGoalGrasp(grasp, jawwidth)
-
-    planner.showgraph()
+    pass

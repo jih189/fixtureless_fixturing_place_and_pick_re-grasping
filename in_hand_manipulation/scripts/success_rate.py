@@ -12,114 +12,110 @@ from tf_util import PandaPosMax_t_PosMat, PosMat_t_PandaPosMax
 from pandaplotutils import pandageom as pg 
 
 import networkx as nx
+from networkx.drawing.nx_agraph import graphviz_layout
 import matplotlib.pyplot as plt
+import random
+
+def motion_planning_generator(probability):
+  return random.random() < probability
 
 
 def regrasping(planner, dmgplanner, base):
+  # convert the unit
+  def convertUnit(inputmatrix):
+    outputmatrix = np.array(inputmatrix)
+    outputmatrix[0][3] *= 1000
+    outputmatrix[1][3] *= 1000
+    outputmatrix[2][3] *= 1000
+
+    return outputmatrix
 
   # load the dmg planner from database
   dmgplanner.loadDB()
 
-  # create the regrasp graph
+  # # create the regrasp graph
   planner.CreatePlacementGraph()
-  # planner.showgraph()
 
-  test_step = 0
-  success_num = 0
-  num_of_test = 100
-  while test_step < num_of_test:
-    grasp_id_1, grasp_pose_1 = planner.getRandomGraspId()
-    grasp_id_2, grasp_pose_2 = planner.getRandomGraspId()
-    # print("check grasp ids ", grasp_id_1, " and ", grasp_id_2)
-    # ensure the grasp poses has the same grasping axis direction
-    if np.linalg.norm(grasp_pose_1[:3, 1] + grasp_pose_2[:3, 1]) < 1.0:
-      continue
-    test_step += 1
-    # print("grasp id ", grasp_id_1, " ", grasp_id_2)
-    result1 = planner.getGraspsById([grasp_id_1])
-    result2 = planner.getGraspsById([grasp_id_2])
+  for poss in range(0, 100, 2):
+    possibility = poss * 0.01
+    successtime = 0
 
-    planner.addStartGrasp(result1[0][0], result1[0][1], base)
-    planner.addGoalGrasp(result2[0][0], result2[0][1], base)
-    # if planner.has_path():
-    #   success_num += 1
-    # planner.showgraph()
-    # break
-    if planner.has_path():
-      paths = planner.find_shortest_PlacementG_path()
-      found_solution = False
-      for l in range(len(paths)):
-        path = paths[l]
+    test_time = 100
+    current_time = 0
 
-        local_solution = True
-        current_grasp_pose = result1[0][0]
-        grasps_between_placements = planner.get_placement_grasp_trajectory(path)
-        #########################################################################
-        for i, (currentplacementid, _, current_real_placementid) in enumerate(path):
-          # if the current planning placement is end goal, then we can break the loop
-          if currentplacementid == "end_g":
-            break
+    while True:
+      if current_time == test_time:
+        break
+      
+      grasp_id_1, grasp_pose_1 = planner.getRandomGraspId()
+      grasp_id_2, grasp_pose_2 = planner.getRandomGraspId()
+      # ensure the grasp poses has the same grasping axis direction
+      # if grasp_pose_1[:3, 1].dot(grasp_pose_2[:3, 1]) < 0:
+      #   continue
+      current_time += 1
+      result1 = planner.getGraspsById([grasp_id_1])
+      result2 = planner.getGraspsById([grasp_id_2])
 
-          find_next_grasp = False
-          for nextgrasp_candidate_pair in grasps_between_placements[i]:
-            candidate_jawwidth = 0
-            if type(nextgrasp_candidate_pair) == tuple:
-              candidate_jawwidth = nextgrasp_candidate_pair[1]
-              nextgrasp_candidate = nextgrasp_candidate_pair[0] # convert the target grasp to correct format
-            else:
-              candidate_jawwidth = planner.getGraspsById([nextgrasp_candidate_pair])[0][1]
-              nextgrasp_candidate = planner.getGraspsById([nextgrasp_candidate_pair])[0][0] # convert grasp id to grasp pose
+      planner.addStartGrasp(result1[0][0], result1[0][1], base)
+      planner.addGoalGrasp(result2[0][0], result2[0][1], base)
 
-            # convert the unit
-            def convertUnit(inputmatrix):
-              outputmatrix = np.array(inputmatrix)
-              outputmatrix[0][3] *= 1000
-              outputmatrix[1][3] *= 1000
-              outputmatrix[2][3] *= 1000
+      # planner.showgraph()
+      
+      success = False
+      while planner.has_path():
+        # print("has path")
+        first_level_path, first_level_grasps, first_level_jawwidths = planner.find_first_level_path()
+        # print("first level path ", first_level_path)
+        # generate the second level graph
+        findapath = True
+        for s in range(len(first_level_path)-1):
+          placeAndPickActionList = planner.findRegraspAction(first_level_path[s], first_level_path[s+1])
+          placegrasppose = first_level_grasps[s]
+          placejawwidth = first_level_jawwidths[s]
+          pickgrasppose = first_level_grasps[s+1]
+          pickjawwidth = first_level_jawwidths[s+1]
 
-              return outputmatrix
-
-            dmgresult = dmgplanner.getTrajectory(convertUnit(current_grasp_pose), convertUnit(nextgrasp_candidate), candidate_jawwidth, convertUnit(planner.getPlacementsById([current_real_placementid])[0]), base)
-            # if dmgresult == None:
-            #   print("no dmg result")
-            #   errorplacement = planner.getPlacementsById([current_real_placementid])[0]
-            #   dmgplanner.renderObject(base, PosMat_t_PandaPosMax(errorplacement))
-            #   starthnd = fetch_grippernm.newHandNM(hndcolor=[0, 0, 1, 0.5])
-            #   starthnd.setMat(pandanpmat4 = PosMat_t_PandaPosMax(errorplacement.dot(current_grasp_pose)))
-            #   starthnd.setJawwidth(50)
-            #   starthnd.reparentTo(base.render)
-
-            #   endhnd = fetch_grippernm.newHandNM(hndcolor=[1, 0, 0, 0.5])
-            #   endhnd.setMat(pandanpmat4 = PosMat_t_PandaPosMax(errorplacement.dot(nextgrasp_candidate)))
-            #   endhnd.setJawwidth(50)
-            #   endhnd.reparentTo(base.render)
-
-            #   # show the ground
-            #   pg.plotLinesegs(base.render, np.array([[100,0,0],[-100, 0, 0]]))
-            #   pg.plotLinesegs(base.render, np.array([[0,100,0],[0, -100, 0]]))
-
-            #   base.run()
-
-            if dmgresult == None:
-              continue
-            else:
-              current_grasp_pose = nextgrasp_candidate
-              find_next_grasp = True
+          # find is there any way to place and pick
+          findsolution = False
+          for placementpose, regrasptype, _ in placeAndPickActionList:
+            if regrasptype == "stable":
+              #### search ik solution for place and pick in stable placement
+              placepose = placementpose.dot(placegrasppose)
+              findPlaceSolution = motion_planning_generator(possibility) # False # True # solveIk(placepose)
+              if not findPlaceSolution:
+                continue
+              pickpose = placementpose.dot(pickgrasppose)
+              findPickSolution = motion_planning_generator(possibility) # False # True # solveIk(pickpose)
+              if not findPickSolution:
+                continue
+              findsolution = True
               break
-          if not find_next_grasp:
-            local_solution = False
-            break
-        if local_solution:
-          found_solution = True
+            elif regrasptype == "unstable":
+              # search for the end-effector path for sliding motion over the object's surface
+              # remember comment this back
+              # dmgresult = dmgplanner.getTrajectory(convertUnit(placegrasppose), convertUnit(pickgrasppose), placejawwidth * 1000.0, convertUnit(placementpose), base)
+              # if dmgresult == None:
+              #   continue
+              findSlidingArmMotionSolution = False # motion_planning_generator(possibility) # False # True # solveSlidingMotion(dmgresult)
+              if not findSlidingArmMotionSolution:
+                continue
+              findsolution = True
+          if not findsolution:
+            # there is no solution between current place and pick grasp poses
+            # remove the edge bewteen them in the first level graph
+            planner.removeEdge(first_level_path[s], first_level_path[s+1])
+            findapath = False
+        if findapath:
+          success = True
           break
-      if found_solution:
-        success_num += 1
-    planner.reset()
-    print(success_num, " / ", test_step)
-
-  print("success rate = ", float(success_num) / float(num_of_test))
+      if success:
+        successtime += 1
+      planner.reset()
+    print("success rate ", float(successtime)/test_time, " with probability ", possibility)
+    if float(successtime)/test_time == 1.0:
+      print("hit 100")
+      break
   
-
 
 
 if __name__=='__main__':
@@ -127,13 +123,15 @@ if __name__=='__main__':
   # object_name = "cup"
   # object_name = "book"
   # object_name = "Lshape"
+  # object_name = "Lpipe"
   # object_name = "Ushape"
   # object_name = "triangle"
   # object_name = "Oshape"
-  object_name = "Hshape"
+  # object_name = "Hshape"
   # object_name = "box"
   # object_name = "cuboid"
   # object_name = "almonds_can"
+  object_name = "can"
   
   base = pandactrl.World(camp=[700,300,1400], lookatp=[0,0,0])
   this_dir, this_filename = os.path.split(__file__)   
