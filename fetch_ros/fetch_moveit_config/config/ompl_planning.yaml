@@ -21,6 +21,8 @@ planner_configs:
     type: geometric::PRM
   PRMstarkConfigDefault:
     type: geometric::PRMstar
+  CBIRRTConfigDefault:
+    type: geometric::CBIRRT
 arm:
   planner_configs:
     - SBLkConfigDefault
@@ -34,9 +36,11 @@ arm:
     - TRRTkConfigDefault
     - PRMkConfigDefault
     - PRMstarkConfigDefault
+    - CBIRRTConfigDefault
   projection_evaluator: joints(shoulder_pan_joint,shoulder_lift_joint)
   longest_valid_segment_fraction: 0.005
   enforce_joint_model_state_space: true
+  enforce_constrained_state_space: true
 arm_with_torso:
   planner_configs:
     - SBLkConfigDefault

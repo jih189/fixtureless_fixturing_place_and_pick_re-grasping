@@ -1,13 +1,12 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>objects_description</name>
-  <version>0.8.2</version>
+  <version>0.8.3</version>
   <description>
-    URDF for objects.
+    object mesh for project
   </description>
-  <maintainer email="jih189@ucsd.edu">Jiaming Hu</maintainer>
-
-  <license>BMI</license>
+  <maintainer email="jih189@ucsd.edu">Jiaming</maintainer>
+  <license>cogrob</license>
 
   <buildtool_depend>catkin</buildtool_depend>
   <exec_depend>urdf</exec_depend>
