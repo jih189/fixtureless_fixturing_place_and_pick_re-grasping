@@ -1,6 +1,8 @@
 #include <tf/transform_listener.h>
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <moveit/robot_model_loader/robot_model_loader.h>
+#include <moveit/robot_trajectory/robot_trajectory.h>
 
 #include <moveit_msgs/DisplayRobotState.h>
 #include <moveit_msgs/DisplayTrajectory.h>
@@ -10,6 +12,17 @@
 #include "geometric_shapes/mesh_operations.h"
 #include "geometric_shapes/shape_operations.h"
 
+#include <trac_ik/trac_ik.hpp>
+#include <kdl/chainiksolverpos_nr_jl.hpp>
+#include <visualization_msgs/Marker.h>
+#include <rviz_visual_tools/rviz_visual_tools.h>
+
+
+void geoPoseToTransformTF(const geometry_msgs::Pose &p, tf::Transform &t){
+  t.setOrigin(tf::Vector3(p.position.x, p.position.y, p.position.z));
+  t.setRotation(tf::Quaternion(p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w));
+}
+
 void transformTFToGeoPose(const tf::Transform &t, geometry_msgs::Pose &p){
   p.orientation.x = t.getRotation().x();
   p.orientation.y = t.getRotation().y();
@@ -18,6 +31,21 @@ void transformTFToGeoPose(const tf::Transform &t, geometry_msgs::Pose &p){
   p.position.x = t.getOrigin().x();
   p.position.y = t.getOrigin().y();
   p.position.z = t.getOrigin().z();
+}
+
+void productBetweenGeoPose(const geometry_msgs::Pose &p1, const geometry_msgs::Pose &p2, geometry_msgs::Pose &result){
+  tf::Transform p1t;
+  tf::Transform p2t;
+  geoPoseToTransformTF(p1, p1t);
+  geoPoseToTransformTF(p2, p2t);
+  transformTFToGeoPose(p1t*p2t, result);
+}
+
+void transformTFToKDL(const tf::Transform &t, KDL::Frame &k){
+  for(uint i = 0; i < 3; ++i)
+    k.p[i] = t.getOrigin()[i];
+  for(uint i = 0; i < 9; ++i)
+    k.M.data[i] = t.getBasis()[i/3][i%3]; 
 }
 
 int main(int argc, char** argv)
@@ -54,20 +82,32 @@ int main(int argc, char** argv)
   ros::AsyncSpinner spinner(1);
   spinner.start();
 
+  static const std::string OBJECT_NAME = "can";
+  static const std::string OBJECT_MESH_FILE = "package://objects_description/can/can.stl";
   static const std::string PLANNING_GROUP = "arm";
+  static const std::string END_EFFECTOR_PLANNING_GROUP = "gripper";
   moveit::planning_interface::MoveGroupInterface move_group(PLANNING_GROUP);
-  moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
-  const robot_state::JointModelGroup*joint_model_group = move_group.getCurrentState()->getJointModelGroup(PLANNING_GROUP);
+  moveit::planning_interface::MoveGroupInterface end_effector_move_group(END_EFFECTOR_PLANNING_GROUP);
 
-  // extract the pose of the can
+  moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+  const robot_state::JointModelGroup* joint_model_group = move_group.getCurrentState()->getJointModelGroup(PLANNING_GROUP);
+
+  robot_model_loader::RobotModelLoaderConstPtr robot_model_loader = std::make_shared<robot_model_loader::RobotModelLoader>("robot_description");
+  // get the robot kinematic model
+  robot_model::RobotModelConstPtr kinematic_model = robot_model_loader->getModel();
+
+  // extract the pose of the object 
   tf::TransformListener listener;
 
   //Eigen::Affine3d object_in_world_frame;
-  tf::StampedTransform can_transform;
+  tf::StampedTransform object_transform;
+  tf::StampedTransform shoulder_transform;
   try{
     ros::Time now = ros::Time::now();
-    listener.waitForTransform("/can", "/base_link", ros::Time(0), ros::Duration(1.0));
-    listener.lookupTransform("/base_link","/can", ros::Time(0), can_transform);
+    listener.waitForTransform("/" + OBJECT_NAME, "/base_link", ros::Time(0), ros::Duration(1.0));
+    listener.lookupTransform("/base_link","/" + OBJECT_NAME, ros::Time(0), object_transform);
+    listener.waitForTransform("/base_link", "/shoulder_pan_link", ros::Time(0), ros::Duration(1.0));
+    listener.lookupTransform("/base_link","/shoulder_pan_link", ros::Time(0), shoulder_transform);
   }
   catch(tf::TransformException ex){
     ROS_ERROR("%s", ex.what());
@@ -75,26 +115,26 @@ int main(int argc, char** argv)
   }
 
   std::vector<moveit_msgs::CollisionObject> collision_objects;
-  // add the can into the planning scene
-  moveit_msgs::CollisionObject collision_object_can;
-  collision_object_can.header.frame_id = move_group.getPlanningFrame();
-  collision_object_can.id = "can";
-  std::string can_dir = "package://objects_description/can/can.stl";
+  // add the object into the planning scene
+  moveit_msgs::CollisionObject collision_object_;
+  collision_object_.header.frame_id = move_group.getPlanningFrame();
+  collision_object_.id = OBJECT_NAME; 
+  std::string object_dir = OBJECT_MESH_FILE;
   const Eigen::Vector3d scaling(0.001,0.001,0.001);
-  shapes::Mesh *m = shapes::createMeshFromResource(can_dir, scaling);
-  shape_msgs::Mesh can_mesh;
-  shapes::ShapeMsg can_mesh_msg;
-  shapes::constructMsgFromShape(m, can_mesh_msg);
-  can_mesh = boost::get<shape_msgs::Mesh>(can_mesh_msg);
+  shapes::Mesh *m = shapes::createMeshFromResource(object_dir, scaling);
+  shape_msgs::Mesh object_mesh;
+  shapes::ShapeMsg object_mesh_msg;
+  shapes::constructMsgFromShape(m, object_mesh_msg);
+  object_mesh = boost::get<shape_msgs::Mesh>(object_mesh_msg);
 
-  geometry_msgs::Pose can_pose;
-  transformTFToGeoPose(can_transform, can_pose);
+  geometry_msgs::Pose object_pose;
+  transformTFToGeoPose(object_transform, object_pose);
 
-  collision_object_can.meshes.push_back(can_mesh);
-  collision_object_can.pose = can_pose;
-  collision_object_can.operation = collision_object_can.ADD;
+  collision_object_.meshes.push_back(object_mesh);
+  collision_object_.pose = object_pose;
+  collision_object_.operation = collision_object_.ADD;
   
-  collision_objects.push_back(collision_object_can);
+  // collision_objects.push_back(collision_object_);
 
   // add the table into the planning scene
   moveit_msgs::CollisionObject collision_object_table;
@@ -105,12 +145,12 @@ int main(int argc, char** argv)
   shape_msgs::SolidPrimitive table_primitive;
   table_primitive.type = table_primitive.BOX;
   table_primitive.dimensions.resize(3);
-  table_primitive.dimensions[0] = 0.5;
+  table_primitive.dimensions[0] = 1.2;
   table_primitive.dimensions[1] = 1.2;
   table_primitive.dimensions[2] = 0.2;
 
   geometry_msgs::Pose table_pose;
-  table_pose.position.x = 0.56;
+  table_pose.position.x = 0.91;
   table_pose.position.y = 0;
   table_pose.position.z = 0.445;
 
@@ -128,72 +168,211 @@ int main(int argc, char** argv)
   planning_scene_interface.addCollisionObjects(collision_objects);
   planning_scene_interface.applyCollisionObjects(collision_objects);
 
+  // initialize the visualizer for grasps
+  moveit_visual_tools::MoveItVisualToolsPtr grasp_visuals = std::make_shared<moveit_visual_tools::MoveItVisualTools>("base_link", "/move_group/display_contacts");
+  rviz_visual_tools::RvizVisualToolsPtr targetObject_visuals = std::make_shared<rviz_visual_tools::RvizVisualTools>("base_link", "/target_object_pose");
+  targetObject_visuals->deleteAllMarkers();
+  moveit_visual_tools::MoveItVisualToolsPtr arm_visuals = std::make_shared<moveit_visual_tools::MoveItVisualTools>("base_link");
+
+  // initialize the trac ik solver
+  TRAC_IK::TRAC_IK tracik_solver(std::string("shoulder_pan_link"), std::string("wrist_roll_link"));
+  KDL::Chain chain;
+  KDL::JntArray ll, ul;
+
+  bool valid_trac_ik = tracik_solver.getKDLChain(chain);
+  if(!valid_trac_ik){
+    ROS_ERROR("There was no valid KDL chain found");
+    return 0;
+  }
+
+  valid_trac_ik = tracik_solver.getKDLLimits(ll, ul);
+  if(!valid_trac_ik){
+    ROS_ERROR("There were no valid KDL joint limits found");
+    return 0;
+  }
+
+  KDL::ChainFkSolverPos_recursive fk_solver(chain);
+  KDL::ChainIkSolverVel_pinv vik_solver(chain);
+  KDL::ChainIkSolverPos_NR_JL kdl_solver(chain, ll, ul, fk_solver, vik_solver);//, 1, 1e-5);
+
+  KDL::JntArray nominal(chain.getNrOfJoints());
+
+  for(uint j = 0; j < nominal.data.size(); j++){
+    nominal(j) = (ll(j) + ul(j)) / 2.0;
+  }
+
+  bool foundSolution = false;
+  moveit::core::RobotState current_state = *(move_group.getCurrentState());
+  geometry_msgs::Pose current_in_hand_pose;
+  geometry_msgs::Pose current_in_hand_pose_inv;
+
+  // initialize the whole trajectory
+  robot_trajectory::RobotTrajectory total_trajectory = robot_trajectory::RobotTrajectory(kinematic_model, joint_model_group);
+
   // analyze where to grasp the object
   for(int i = 0; i < in_hand_poses.size(); i++){
-    tf::Transform grasp_pose_in_world_frame = can_transform * in_hand_poses[i].inverse(); 
+    total_trajectory.clear();
 
-    moveit_visual_tools::MoveItVisualToolsPtr grasp_visuals = std::make_shared<moveit_visual_tools::MoveItVisualTools>("base_link", "/move_group/display_contacts");
+    transformTFToGeoPose(in_hand_poses[i], current_in_hand_pose);
+    transformTFToGeoPose(in_hand_poses[i].inverse(), current_in_hand_pose_inv);
+    // for each possible grasp poses, there are three motion we need to plan
+    // 1. pre-grasp planning
+    // 2. approach planning
+    // 3. lift planning
 
-    // visualize grasp pose
+    // reset the start robot state
+    current_state = *(move_group.getCurrentState());
+    current_state.setJointPositions(std::string("l_gripper_finger_joint"), std::vector<double>{0.04});
+    current_state.setJointPositions(std::string("r_gripper_finger_joint"), std::vector<double>{0.04});
+
+    // calculate the grasp pose in the world frame
+    tf::Transform grasp_pose_in_world_frame = object_transform * in_hand_poses[i].inverse(); 
     geometry_msgs::Pose grasp_pose;
     transformTFToGeoPose(grasp_pose_in_world_frame, grasp_pose);
-    std::vector<double> ee_joint_pos{0.045, 0.045};
 
-    // visualize pre-grasp pose
+    // calculate the pre-grasp pose in the world frame
+    tf::Transform pre_grasp_pose_in_world_frame = grasp_pose_in_world_frame * tf::Transform(tf::Quaternion(0,0,0,1), tf::Vector3(-0.08, 0, 0));
     geometry_msgs::Pose pre_grasp_pose;
-    transformTFToGeoPose(grasp_pose_in_world_frame * tf::Transform(tf::Quaternion(0,0,0,1), tf::Vector3(-0.08,0,0)), pre_grasp_pose);
+    transformTFToGeoPose(pre_grasp_pose_in_world_frame, pre_grasp_pose);
 
-    //grasp_visuals->publishEEMarkers(grasp_pose, grasp_visuals->getSharedRobotState()->getJointModelGroup("gripper"), ee_joint_pos, rviz_visual_tools::WHITE, "grasp_pose_" + std::to_string(i));
-    grasp_visuals->publishEEMarkers(pre_grasp_pose, grasp_visuals->getSharedRobotState()->getJointModelGroup("gripper"), ee_joint_pos, rviz_visual_tools::BLUE, "pre-grasp_pose_" + std::to_string(i));
+    // calculate the lift up pose in the world frame
+    tf::Transform lift_up_pose_in_world_frame = tf::Transform(tf::Quaternion(0,0,0,1), tf::Vector3(0,0,0.1)) * grasp_pose_in_world_frame;
+    geometry_msgs::Pose lift_up_pose;
+    transformTFToGeoPose(lift_up_pose_in_world_frame, lift_up_pose);
+    
+    grasp_visuals->publishEEMarkers(pre_grasp_pose, grasp_visuals->getSharedRobotState()->getJointModelGroup(END_EFFECTOR_PLANNING_GROUP), std::vector<double>{0.04,0.04}, rviz_visual_tools::RED, "pre-grasp_pose_" + std::to_string(i));
+    
+    // check whether the pre-grasp pose is feasible
+    KDL::Frame end_effector_pose;
+    KDL::JntArray result = nominal;
+    transformTFToKDL(shoulder_transform.inverse() * pre_grasp_pose_in_world_frame, end_effector_pose);
+    if(kdl_solver.CartToJnt(result, end_effector_pose, result) < 0)
+      continue;
+
+    // add the object into the the planning scene
+    std::vector<std::string> current_object_ids = planning_scene_interface.getKnownObjectNames();
+    if(std::find(current_object_ids.begin(), current_object_ids.end(), OBJECT_NAME) == current_object_ids.end()){
+      collision_objects.clear();
+      collision_objects.push_back(collision_object_);
+      planning_scene_interface.addCollisionObjects(collision_objects);
+      planning_scene_interface.applyCollisionObjects(collision_objects);
+      // need to wait for the collision object added into the planning scene
+      ros::Duration(0.3).sleep();
+    }
+    current_object_ids.clear();
+
+    // check whether the pre-grasping motion is possible
+    move_group.setStartState(current_state);
+    move_group.setPoseTarget(pre_grasp_pose);
+    moveit::planning_interface::MoveGroupInterface::Plan grasp_plan;
+    if(move_group.plan(grasp_plan) != moveit::planning_interface::MoveItErrorCode::SUCCESS){
+      move_group.clearPoseTargets();
+      continue;
+    }
+
+    move_group.clearPoseTargets();
+    // generate the grasp_trajectory object and add the pre-grasp motion
+    robot_trajectory::RobotTrajectory grasp_trajectory = robot_trajectory::RobotTrajectory(kinematic_model, joint_model_group);
+    grasp_trajectory.setRobotTrajectoryMsg(current_state, grasp_plan.trajectory_);
+
+    // update the current robot state
+    current_state = grasp_trajectory.getLastWayPoint();
+
+    // need to remove the object from the planning scene to avoid the collision
+    current_object_ids = planning_scene_interface.getKnownObjectNames();
+    if(std::find(current_object_ids.begin(), current_object_ids.end(), OBJECT_NAME) != current_object_ids.end()){
+      planning_scene_interface.removeCollisionObjects(std::vector<std::string>{OBJECT_NAME});
+    }
+
+    // plan for the approach motion
+    move_group.setStartState(current_state);
+    moveit_msgs::RobotTrajectory approach_trajectory_msg;
+    double fraction = move_group.computeCartesianPath(std::vector<geometry_msgs::Pose>{grasp_pose}, 0.01, 0.0, approach_trajectory_msg);
+
+    if(fraction < 0.95){
+      move_group.clearPoseTargets();
+      continue;
+    }
+    move_group.clearPoseTargets();
+
+    // generate the approach motion and add it to grasp trajectory
+    robot_trajectory::RobotTrajectory approach_trajectory = robot_trajectory::RobotTrajectory(kinematic_model, joint_model_group);
+    approach_trajectory.setRobotTrajectoryMsg(current_state, approach_trajectory_msg);
+    grasp_trajectory.append(approach_trajectory, 0.01);
+
+    // update the current robot state
+    current_state = grasp_trajectory.getLastWayPoint();
+
+    // plan for the lift up motion
+    move_group.setStartState(current_state);
+    moveit_msgs::RobotTrajectory lift_up_trajectory_msg;
+    fraction = move_group.computeCartesianPath(std::vector<geometry_msgs::Pose>{lift_up_pose}, 0.01, 0.0, lift_up_trajectory_msg);
+
+    if(fraction < 0.95){
+      move_group.clearPoseTargets();
+      continue;
+    }
+    move_group.clearPoseTargets();
+
+    // generate the lift up motion and add it to grasp trajectory
+    robot_trajectory::RobotTrajectory lift_up_trajectory = robot_trajectory::RobotTrajectory(kinematic_model, joint_model_group);
+    lift_up_trajectory.setRobotTrajectoryMsg(current_state, lift_up_trajectory_msg);
+    grasp_trajectory.append(lift_up_trajectory, 0.01);
+
+    // update the current robot state
+    current_state = grasp_trajectory.getLastWayPoint();
+
+    total_trajectory.append(grasp_trajectory, 0.01);
+    // visualize the grasp trajectory
+    //arm_visuals->deleteAllMarkers();
+    //arm_visuals->publishTrajectoryPath(grasp_trajectory);
+    // arm_visuals->prompt("Press 'next' in the RvizVisualToolsGui");
+
+    // visualize the grasp pose
+    // grasp_visuals->publishEEMarkers(pre_grasp_pose, grasp_visuals->getSharedRobotState()->getJointModelGroup(END_EFFECTOR_PLANNING_GROUP), std::vector<double>{0.04,0.04}, rviz_visual_tools::BLUE, "pre-grasp_pose");
+     
+    foundSolution = true;
+    break;
   }
-  return 0;
-}
-  /*
-  geometry_msgs::Pose target_pose;
-  target_pose.position.x = result.getOrigin().x();
-  target_pose.position.y = result.getOrigin().y();
-  target_pose.position.z = result.getOrigin().z();
-  target_pose.orientation.x = result.getRotation().x();
-  target_pose.orientation.y = result.getRotation().y();
-  target_pose.orientation.z = result.getRotation().z();
-  target_pose.orientation.w = result.getRotation().w();
 
-  move_group.setPoseTarget(target_pose);
+  if(!foundSolution){
+    std::cout << "can't find solution for grasping" << std::endl;
+    return 0;
+  }
 
-  moveit::planning_interface::MoveGroupInterface::Plan constrained_plan;
-  bool success = (move_group.plan(constrained_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
+  // now the object is lift up into the air, we need to test the constrained motion planning
 
+  // calculate the initial object pose
+  geometry_msgs::Pose init_object_pose = object_pose;
+  init_object_pose.position.z += 0.1;
 
-  // Visualizing the solution trajectory
-  namespace rvt = rviz_visual_tools;
-  moveit_visual_tools::MoveItVisualTools visual_tools("base_link");
+  // calculate the target object pose
+  geometry_msgs::Pose rotateInZ;
+  rotateInZ.orientation.x = 0; 
+  rotateInZ.orientation.y = 0;
+  rotateInZ.orientation.z = 1;
+  rotateInZ.orientation.w = 0;
 
-  visual_tools.publishTrajectoryLine(constrained_plan.trajectory_, joint_model_group);
-  visual_tools.trigger();
+  geometry_msgs::Pose target_object_pose;
+  productBetweenGeoPose(object_pose, rotateInZ, target_object_pose);
+  target_object_pose.position.z += 0.1;
+  target_object_pose.position.y -= 0.5;
 
-  ////////////////////////////////////////////////////
-  std::cout << "default planner: " << move_group.getDefaultPlannerId() << std::endl;
+  // calculate the target gripper pose
+  geometry_msgs::Pose target_gripper_pose;
+  productBetweenGeoPose(target_object_pose, current_in_hand_pose_inv, target_gripper_pose);
 
-  // set planner id
-  move_group.setPlannerId("CBIRRTConfigDefault");
-  // get planner id
-  std::string current_planner_id;
-  std::cout << "current planner id: " << move_group.getPlannerId() << std::endl;
+  // visualize the initial object pose
+  targetObject_visuals->publishMesh(init_object_pose, OBJECT_MESH_FILE, rviz_visual_tools::YELLOW, 0.001, "can_object_init");
+  // try to visualize the target object pose
+  targetObject_visuals->publishMesh(target_object_pose, OBJECT_MESH_FILE, rviz_visual_tools::BLUE, 0.001, "can_object_target");
+  targetObject_visuals->trigger();
+  ros::spinOnce();
 
-  // set the path constraints
+  // define the constraint on the object
   moveit_msgs::Constraints constraints;
   constraints.name = "horizontal_constraint";
 
-  // set position constraint
-  moveit_msgs::PositionConstraint position_constraint;
-  position_constraint.link_name = "base_link";
-  position_constraint.target_point_offset.x = 0.0;
-  position_constraint.target_point_offset.y = 0.0;
-  position_constraint.target_point_offset.z = 0.0;
-  position_constraint.weight = 1.0;
-  constraints.position_constraints.push_back(position_constraint);
-
-  // set orientation constraint
   moveit_msgs::OrientationConstraint orientation_constraint;
   orientation_constraint.header.frame_id = "base_link";
   orientation_constraint.header.stamp = ros::Time(0);
@@ -201,66 +380,68 @@ int main(int argc, char** argv)
   geometry_msgs::Quaternion constrained_quaternion;
   constrained_quaternion.x = 0;
   constrained_quaternion.y = 0;
-  constrained_quaternion.z = -0.707;
-  constrained_quaternion.w = 0.707;
+  constrained_quaternion.z = 0;
+  constrained_quaternion.w = 1.0;
   orientation_constraint.orientation = constrained_quaternion;
   orientation_constraint.weight = 1.0;
-  orientation_constraint.absolute_x_axis_tolerance = 0.8;
-  orientation_constraint.absolute_y_axis_tolerance = 0.8;
-  orientation_constraint.absolute_z_axis_tolerance = 0.8;
+  orientation_constraint.absolute_x_axis_tolerance = 0.1;
+  orientation_constraint.absolute_y_axis_tolerance = 0.1;
+  orientation_constraint.absolute_z_axis_tolerance = 2 * 3.1415;
   constraints.orientation_constraints.push_back(orientation_constraint);
+  constraints.in_hand_pose = current_in_hand_pose;
 
-  constraints.in_hand_pose.position.x = 0.01;
-  //constraints.in_hand_pose.orientation.x = 0.05;
-  //constraints.in_hand_pose.orientation.y = 0.0;
-  //constraints.in_hand_pose.orientation.z = 0.0;
-  //constraints.in_hand_pose.orientation.w = 0.999;
-  
+  // set planner id
+  move_group.setPlannerId("CBIRRTConfigDefault");
+
+  // set constraints
   move_group.setPathConstraints(constraints);
 
-  // get current pose of the end-effector
-  geometry_msgs::PoseStamped result = move_group.getCurrentPose("wrist_roll_link");
-  std::cout << "current pose:" << std::endl;
-  std::cout << "position" << std::endl;
-  std::cout << "x: " << result.pose.position.x << std::endl;
-  std::cout << "y: " << result.pose.position.y << std::endl;
-  std::cout << "z: " << result.pose.position.z << std::endl;
-  std::cout << "orientation" << std::endl;
-  std::cout << "x: " << result.pose.orientation.x << std::endl;
-  std::cout << "y: " << result.pose.orientation.y << std::endl;
-  std::cout << "z: " << result.pose.orientation.z << std::endl;
-  std::cout << "w: " << result.pose.orientation.w << std::endl;
-	
-  geometry_msgs::Pose target_pose;
-  target_pose.position.x = result.pose.position.x;
-  target_pose.position.y = result.pose.position.y;
-  target_pose.position.z = result.pose.position.z - 0.15;
-  target_pose.orientation.x = result.pose.orientation.x;
-  target_pose.orientation.y = result.pose.orientation.y;
-  target_pose.orientation.z = result.pose.orientation.z;
-  target_pose.orientation.w = result.pose.orientation.w;
+  // set the in hand pose
+  move_group.setInHandPose(current_in_hand_pose);
 
-  move_group.setPoseTarget(target_pose);
+  // set current robotstate
+  move_group.setStartState(current_state);
+
+  // add the objectt as part of arm
+  // 1) add the object into the planning scene
+  geometry_msgs::Pose current_object_pose;
+  productBetweenGeoPose(move_group.getCurrentPose().pose, current_in_hand_pose, current_object_pose);
+  collision_object_.pose = current_object_pose;
+  collision_objects.clear();
+  collision_objects.push_back(collision_object_);
+  planning_scene_interface.addCollisionObjects(collision_objects);
+  planning_scene_interface.applyCollisionObjects(collision_objects);
+  // 2) attach the object to the end-effector
+  move_group.attachObject(collision_object_.id, std::string("wrist_roll_link"), std::vector<std::string>{"l_gripper_finger_link","r_gripper_finger_link"});
+  ros::Duration(0.3).sleep();
+
+  // set target gripper pose
+  //move_group.setPoseTarget(target_gripper_pose);
+  move_group.setPoseTarget(target_object_pose);
 
   moveit::planning_interface::MoveGroupInterface::Plan constrained_plan;
   bool success = (move_group.plan(constrained_plan) == moveit::planning_interface::MoveItErrorCode::SUCCESS);
 
+  // detach object
+  move_group.detachObject(collision_object_.id);
+  planning_scene_interface.removeCollisionObjects(std::vector<std::string>{OBJECT_NAME});
+  
+  if(success){
+    std::cout << "find a solution to shift the object" << std::endl;
+    // generate the shift_trajectory object
+    robot_trajectory::RobotTrajectory shift_trajectory = robot_trajectory::RobotTrajectory(kinematic_model, joint_model_group);
+    shift_trajectory.setRobotTrajectoryMsg(current_state, constrained_plan.trajectory_);
 
-  // Visualizing the solution trajectory
-  namespace rvt = rviz_visual_tools;
-  moveit_visual_tools::MoveItVisualTools visual_tools("base_link");
+    total_trajectory.append(shift_trajectory, 0.01);
 
-  visual_tools.publishTrajectoryLine(constrained_plan.trajectory_, joint_model_group);
-  visual_tools.trigger();
+    arm_visuals->deleteAllMarkers();
+    arm_visuals->publishTrajectoryPath(total_trajectory);
+  }
+  else{
+    std::cout << "can't find a solution to shift the object" << std::endl;
+  }
 
-  //if(success)
-  //  move_group.move();
-
-
-
-  ROS_INFO_NAMED("tutorials", "planning done!");
-
-  ros::shutdown();
+  grasp_visuals->publishEEMarkers(target_gripper_pose, grasp_visuals->getSharedRobotState()->getJointModelGroup(END_EFFECTOR_PLANNING_GROUP), std::vector<double>{0.04,0.04}, rviz_visual_tools::BLUE, "target_gripper_pose");
 
   return 0;
-  */
+}

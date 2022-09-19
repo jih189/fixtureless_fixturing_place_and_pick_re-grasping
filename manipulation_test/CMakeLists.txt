@@ -26,6 +26,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_eigen
   tf2_geometry_msgs
   tf_conversions
+  trac_ik_lib
 )
 
 ## System dependencies are found with CMake's conventions
@@ -132,6 +133,7 @@ catkin_package(
    tf2_ros
    tf2_eigen
    tf_conversions
+   trac_ik_lib
  DEPENDS
    EIGEN3
 #  DEPENDS system_lib

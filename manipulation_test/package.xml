@@ -69,6 +69,7 @@
   <build_depend>tf2_geometry_msgs</build_depend>
   <build_depend>tf_conversions</build_depend>
   <build_depend>eigen_conversions</build_depend>
+  <build_depend>trac_ik_lib</build_depend>
 
   <build_export_depend>roscpp</build_export_depend>
   <build_export_depend>rospy</build_export_depend>
@@ -92,6 +93,7 @@
   <exec_depend>tf2_eigen</exec_depend>
   <exec_depend>tf2_geometry_msgs</exec_depend>
   <exec_depend>tf_conversions</exec_depend>
+  <exec_depend>trac_ik_lib</exec_depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
